@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { useSocket } from './hooks/useSocket';
 import { cn } from './lib/utils';
-import { Play, Pause, SkipForward, Users, Radio, LogOut } from 'lucide-react';
+import { Play, Pause, SkipForward, Users, Radio, LogOut, Plus } from 'lucide-react';
+import { YouTubePlayer } from './components/YouTubePlayer';
 
 function App() {
   const [userId] = useState(() => `user-${Math.random().toString(36).substr(2, 9)}`);
   const [inputRoomId, setInputRoomId] = useState('');
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
+  const [trackUrl, setTrackUrl] = useState('');
 
   const { isConnected, roomState, hostId, isHost, emitMutation, socketId } = useSocket(activeRoomId, userId);
 
@@ -16,6 +18,38 @@ function App() {
       setActiveRoomId(inputRoomId.trim().toUpperCase());
     }
   };
+
+  const handleAddTrack = (e: React.FormEvent) => {
+    e.preventDefault();
+    // Simple YT ID extractor
+    const match = trackUrl.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/);
+    const videoId = match ? match[1] : trackUrl;
+    if (videoId.length === 11) {
+      emitMutation('ROOM_RESYNC', { currentTrackId: videoId, playhead: 0 });
+      setTrackUrl('');
+    }
+  };
+
+  const handlePlayerStateChange = (state: { isPlaying: boolean; playhead: number }) => {
+    emitMutation(state.isPlaying ? 'PLAY' : 'PAUSE', { playhead: state.playhead });
+  };
+
+  // MediaSession API Integration
+  React.useEffect(() => {
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: roomState?.currentTrackId || 'MRelay',
+        artist: activeRoomId || 'Sync Stream',
+        album: 'Collaborative Music',
+      });
+
+      navigator.mediaSession.setActionHandler('play', () => emitMutation('PLAY'));
+      navigator.mediaSession.setActionHandler('pause', () => emitMutation('PAUSE'));
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        emitMutation('SEEK', { playhead: details.seekTime });
+      });
+    }
+  }, [roomState?.currentTrackId, activeRoomId, emitMutation]);
 
   const handleLeave = () => {
     setActiveRoomId(null);
@@ -85,28 +119,44 @@ function App() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col items-center justify-center space-y-12">
+      <main className="flex-1 flex flex-col items-center justify-center space-y-12 w-full">
         {/* Mock Player */}
-        <div className="w-full aspect-video bg-zinc-900 rounded-3xl border border-zinc-800 flex flex-col items-center justify-center relative overflow-hidden group">
-          <div className="absolute inset-0 bg-gradient-to-b from-zinc-900/0 to-zinc-900/50" />
-          
-          <div className="z-10 text-center space-y-4 p-6">
-             <div className="text-sm font-medium text-zinc-500 uppercase tracking-widest">Now Streaming</div>
-             <h3 className="text-xl md:text-3xl font-bold text-white max-w-md mx-auto leading-tight">
-               {roomState?.currentTrackId || "No Track Selected"}
-             </h3>
-             <div className="flex items-center justify-center gap-4 text-zinc-400 text-sm font-mono">
-               <span>{Math.floor(roomState?.currentPlayhead || 0)}s</span>
-               <div className="w-48 h-1 bg-zinc-800 rounded-full overflow-hidden">
-                 <div 
-                   className="h-full bg-white transition-all duration-1000" 
-                   style={{ width: `${Math.min(100, (roomState?.currentPlayhead || 0) / 3)}%` }} 
-                 />
-               </div>
-               <span>--:--</span>
-             </div>
-          </div>
+        <div className="w-full aspect-video bg-zinc-900 rounded-3xl border border-zinc-800 flex flex-col items-center justify-center relative overflow-hidden group shadow-2xl">
+          {roomState?.currentTrackId ? (
+            <YouTubePlayer
+              videoId={roomState.currentTrackId}
+              isPlaying={roomState.isPlaying}
+              targetPlayhead={roomState.currentPlayhead}
+              isHost={isHost}
+              onStateChange={handlePlayerStateChange}
+              updatedAt={roomState.updatedAt}
+            />
+          ) : (
+            <div className="z-10 text-center space-y-4 p-6">
+               <div className="text-sm font-medium text-zinc-500 uppercase tracking-widest">Idle</div>
+               <h3 className="text-xl md:text-3xl font-bold text-zinc-700 max-w-md mx-auto leading-tight">
+                 Enter a YouTube URL to Start
+               </h3>
+            </div>
+          )}
         </div>
+
+        {/* Track Input (Only for host for now, or all if we want collaborative queue) */}
+        <form onSubmit={handleAddTrack} className="w-full flex gap-2">
+          <input
+            type="text"
+            placeholder="Paste YouTube URL or ID"
+            value={trackUrl}
+            onChange={(e) => setTrackUrl(e.target.value)}
+            className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-700 transition-all placeholder:text-zinc-600"
+          />
+          <button
+            type="submit"
+            className="bg-zinc-800 hover:bg-zinc-700 text-white p-2 rounded-xl transition-all active:scale-95"
+          >
+            <Plus className="w-5 h-5" />
+          </button>
+        </form>
 
         {/* Controls */}
         <div className="flex items-center gap-8">
