@@ -51,8 +51,14 @@ const RoomMutationSchema = z.object({
     timestamp: z.number(),
     item: z.string().optional(),
     items: z.array(z.string()).optional(),
-    index: z.number().optional()
+    index: z.number().optional(),
+    newIndex: z.number().optional()
   })
+});
+
+const SendMessageSchema = z.object({
+  roomId: z.string().min(1).max(50).regex(/^[a-zA-Z0-9_-]+$/),
+  text: z.string().min(1).max(500)
 });
 
 redis.on('connect', () => logger.info({ message: 'Connected to Redis' }));
@@ -234,6 +240,25 @@ io.on('connection', (socket) => {
         queue
       }
     });
+  });
+
+  socket.on('SEND_MESSAGE', (data) => {
+    const result = SendMessageSchema.safeParse(data);
+    if (!result.success) {
+      logger.warn({ message: 'Invalid SEND_MESSAGE schema', socket_id: socket.id, error: result.error });
+      return;
+    }
+
+    const payload = result.data;
+    const message = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      userId: socket.data.userId,
+      username: socket.data.username,
+      text: payload.text,
+      timestamp: Date.now()
+    };
+
+    io.to(payload.roomId).emit('ROOM_MESSAGE', message);
   });
 
   socket.on('disconnect', async (reason) => {

@@ -1,0 +1,64 @@
+import React, { useState, useRef, useEffect } from 'react';
+import type { ChatMessage } from '../hooks/useSocket';
+
+interface ChatViewProps {
+  messages: ChatMessage[];
+  onSendMessage: (text: string) => void;
+  currentUserId: string;
+}
+
+export const ChatView: React.FC<ChatViewProps> = ({ messages, onSendMessage, currentUserId }) => {
+  const [text, setText] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (text.trim()) {
+      onSendMessage(text.trim());
+      setText('');
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-zinc-900 rounded-3xl border border-zinc-800 overflow-hidden shadow-2xl">
+      <div className="p-4 border-b border-zinc-800 bg-zinc-900/50">
+        <h3 className="text-sm font-bold text-zinc-300 uppercase tracking-widest">Room Chat</h3>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.length === 0 ? (
+          <div className="text-center text-zinc-600 text-sm mt-4">No messages yet. Say hi!</div>
+        ) : (
+          messages.map((msg) => (
+            <div key={msg.id} className={`flex flex-col ${msg.userId === currentUserId ? 'items-end' : 'items-start'}`}>
+              <div className="text-[10px] text-zinc-500 mb-1">{msg.username}</div>
+              <div className={`px-4 py-2 rounded-2xl max-w-[80%] text-sm ${msg.userId === currentUserId ? 'bg-blue-600 text-white rounded-br-none' : 'bg-zinc-800 text-zinc-200 rounded-bl-none'}`}>
+                {msg.text}
+              </div>
+            </div>
+          ))
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+      <form onSubmit={handleSubmit} className="p-4 border-t border-zinc-800 bg-zinc-900/50 flex gap-2">
+        <input
+          type="text"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Type a message..."
+          className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-700 transition-all placeholder:text-zinc-600 text-white"
+        />
+        <button type="submit" className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-xl transition-all active:scale-95 text-sm font-bold">
+          Send
+        </button>
+      </form>
+    </div>
+  );
+};

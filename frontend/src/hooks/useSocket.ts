@@ -1,17 +1,27 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
+
+export interface ChatMessage {
+  id: string;
+  userId: string;
+  username: string;
+  text: string;
+  timestamp: number;
+}
 
 interface StateSync {
   isPlaying: boolean;
   currentPlayhead: number;
   currentTrackId: string;
   updatedAt: number;
+  queue: string[];
 }
 
 export function useSocket(roomId: string | null, userId: string, username: string) {
   const [isConnected, setIsConnected] = useState(false);
   const [roomState, setRoomState] = useState<StateSync | null>(null);
   const [hostId, setHostId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
@@ -51,6 +61,10 @@ export function useSocket(roomId: string | null, userId: string, username: strin
       setHostId(data.hostId);
     });
 
+    socket.on('ROOM_MESSAGE', (message: ChatMessage) => {
+      setMessages((prev) => [...prev, message]);
+    });
+
     socket.on('ERROR', (data: any) => {
       console.error('[Diagnostic] Received ERROR from server:', data.message);
       // For immediate visibility to the user
@@ -60,10 +74,11 @@ export function useSocket(roomId: string | null, userId: string, username: strin
     return () => {
       console.log('[Diagnostic] Cleaning up socket connection.');
       socket.disconnect();
+      setMessages([]);
     };
-  }, [roomId, userId]);
+  }, [roomId, userId, username]);
 
-  const emitMutation = (type: string, payload: any = {}) => {
+  const emitMutation = useCallback((type: string, payload: any = {}) => {
     if (!socketRef.current || !roomId) {
         console.warn(`[Diagnostic] Emit aborted. socketRef: ${!!socketRef.current}, roomId: ${roomId}`);
         return;
@@ -84,7 +99,12 @@ export function useSocket(roomId: string | null, userId: string, username: strin
     console.log(`[Diagnostic] Emitting ROOM_MUTATION: ${type}`, mutationData);
     socketRef.current.emit('ROOM_MUTATION' as any, mutationData);
     console.log(`[Diagnostic] ROOM_MUTATION emit executed for ${type}`);
-  };
+  }, [roomId]);
+
+  const sendMessage = useCallback((text: string) => {
+    if (!socketRef.current || !roomId) return;
+    socketRef.current.emit('SEND_MESSAGE', { roomId, text });
+  }, [roomId]);
 
   return {
     isConnected,
@@ -92,6 +112,8 @@ export function useSocket(roomId: string | null, userId: string, username: strin
     hostId,
     isHost: socketRef.current?.id === hostId,
     emitMutation,
-    socketId: socketRef.current?.id
+    socketId: socketRef.current?.id,
+    messages,
+    sendMessage
   };
 }
