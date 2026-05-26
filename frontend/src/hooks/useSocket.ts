@@ -17,8 +17,10 @@ export function useSocket(roomId: string | null, userId: string) {
   useEffect(() => {
     if (!roomId) return;
 
-    const socket = io(import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000', {
-      query: { roomId, userId, correlationId: `ui-${userId}` }
+    // Use relative path for proxying in dev, or explicit URL if provided
+    const socket = io({
+      query: { roomId, userId, correlationId: `ui-${userId}` },
+      transports: ['websocket', 'polling']
     });
 
     socketRef.current = socket;
