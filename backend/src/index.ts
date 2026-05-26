@@ -205,10 +205,16 @@ io.on('connection', (socket) => {
 
     if (rId) {
       try {
-        const newHostId = await roomManager.leave(rId, socket.id);
-        if (newHostId && newHostId !== '') {
-          logger.info({ message: 'Host migrated', room_id: rId, old_host_id: socket.id, new_host_id: newHostId });
-          io.to(rId).emit('HOST_CHANGED', { hostId: newHostId });
+        const sockets = await io.in(rId).fetchSockets();
+        if (sockets.length === 0) {
+          logger.info({ message: '[System] Room empty, performing garbage collection', room_id: rId });
+          await redis.del(`room:${rId}:meta`, `room:${rId}:join_order`);
+        } else {
+          const newHostId = await roomManager.leave(rId, socket.id);
+          if (newHostId && newHostId !== '') {
+            logger.info({ message: 'Host migrated', room_id: rId, old_host_id: socket.id, new_host_id: newHostId });
+            io.to(rId).emit('HOST_CHANGED', { hostId: newHostId });
+          }
         }
       } catch (err) {
         logger.error({ message: 'Error leaving room', error: err, socket_id: socket.id });
