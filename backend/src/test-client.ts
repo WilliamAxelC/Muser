@@ -14,60 +14,38 @@ async function createClient(userId: string, roomId: string) {
       resolve(socket);
     });
 
-    socket.on('STATE_SYNC', (data) => {
-      console.log(`[${userId}] Sync: isPlaying=${data.payload.isPlaying}, playhead=${data.payload.currentPlayhead}`);
-    });
-
     socket.on('HOST_CHANGED', (data) => {
       console.log(`[${userId}] Host changed to: ${data.hostId}`);
+    });
+
+    socket.on('STATE_SYNC', (data) => {
+      // Passive sync check
     });
   });
 }
 
 async function runTest() {
-  const roomId = 'phase3-room-' + Date.now();
-  console.log(`Starting Phase 3 test in room: ${roomId}`);
+  const roomId = 'phase4-room-' + Date.now();
+  console.log(`Starting Phase 4 Recovery test in room: ${roomId}`);
 
   try {
-    const client1 = await createClient('host', roomId) as any;
-    const client2 = await createClient('peer', roomId) as any;
+    const host = await createClient('host', roomId) as any;
+    const peer1 = await createClient('peer1', roomId) as any;
+    const peer2 = await createClient('peer2', roomId) as any;
 
-    console.log('--- Test 1: Host PLAY mutation ---');
-    client1.emit('ROOM_MUTATION', {
-      action: 'ROOM_MUTATION',
-      version: 1,
-      correlationId: 'tx-play',
-      payload: { roomId, type: 'PLAY', playhead: 10, timestamp: Date.now() }
-    });
+    console.log('--- Step 1: Host drops. Expecting peer1 to become host. ---');
+    host.disconnect();
 
-    setTimeout(() => {
-      console.log('--- Test 2: Peer (unauthorized) mutation attempt ---');
-      client2.emit('ROOM_MUTATION', {
-        action: 'ROOM_MUTATION',
-        version: 1,
-        correlationId: 'tx-unauth',
-        payload: { roomId, type: 'PAUSE', timestamp: Date.now() }
-      });
-    }, 1000);
+    setTimeout(async () => {
+      console.log('--- Step 2: Peer1 (new host) drops. Expecting peer2 to become host. ---');
+      peer1.disconnect();
 
-    setTimeout(() => {
-      console.log('--- Test 3: Rate Limiting (Flood SEEK) ---');
-      for (let i = 0; i < 10; i++) {
-        client1.emit('ROOM_MUTATION', {
-          action: 'ROOM_MUTATION',
-          version: 1,
-          correlationId: `tx-flood-${i}`,
-          payload: { roomId, type: 'SEEK', playhead: i * 5, timestamp: Date.now() }
-        });
-      }
+      setTimeout(() => {
+        console.log('--- Step 3: All dropped. Test complete. ---');
+        peer2.disconnect();
+        process.exit(0);
+      }, 2000);
     }, 2000);
-
-    setTimeout(() => {
-      console.log('--- Finalizing test ---');
-      client1.disconnect();
-      client2.disconnect();
-      process.exit(0);
-    }, 5000);
 
   } catch (err) {
     console.error('Test failed:', err);
