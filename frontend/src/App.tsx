@@ -4,6 +4,8 @@ import { cn } from './lib/utils';
 import { Play, Pause, SkipForward, Users, Radio, LogOut, Plus } from 'lucide-react';
 import { YouTubePlayer } from './components/YouTubePlayer';
 import type { YouTubePlayerRef } from './components/YouTubePlayer';
+import { ChatView } from './components/ChatView';
+import { QueueView } from './components/QueueView';
 
 function App() {
   const [userId] = useState(() => {
@@ -22,7 +24,7 @@ function App() {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [trackUrl, setTrackUrl] = useState('');
 
-  const { isConnected, roomState, hostId, isHost, emitMutation, socketId } = useSocket(activeRoomId, userId, username);
+  const { isConnected, roomState, hostId, isHost, emitMutation, socketId, messages, sendMessage } = useSocket(activeRoomId, userId, username);
   const ytPlayerRef = useRef<YouTubePlayerRef>(null);
 
   const handleNameChange = (newName: string) => {
@@ -196,74 +198,92 @@ function App() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col items-center justify-center space-y-12 w-full">
-        {/* Mock Player */}
-        <div className="w-full aspect-video bg-zinc-900 rounded-3xl border border-zinc-800 flex flex-col items-center justify-center relative overflow-hidden group shadow-2xl">
-          {roomState?.currentTrackId ? (
-            <YouTubePlayer
-              ref={ytPlayerRef}
-              videoId={roomState.currentTrackId}
-              isPlaying={roomState.isPlaying}
-              targetPlayhead={roomState.currentPlayhead}
-              isHost={isHost}
-              onStateChange={handlePlayerStateChange}
-              updatedAt={roomState.updatedAt}
-            />
-          ) : (
-            <div className="z-10 text-center space-y-4 p-6">
-               <div className="text-sm font-medium text-zinc-500 uppercase tracking-widest">Idle</div>
-               <h3 className="text-xl md:text-3xl font-bold text-zinc-700 max-w-md mx-auto leading-tight">
-                 Enter a YouTube URL to Start
-               </h3>
-            </div>
-          )}
+      <main className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-8 w-full">
+        {/* Left: Queue */}
+        <div className="hidden lg:block lg:col-span-1 h-[500px]">
+          <QueueView 
+            queue={roomState?.queue || []} 
+            isHost={isHost} 
+            onReorder={(oldIndex, newIndex) => emitMutation('QUEUE_REORDER', { index: oldIndex, newIndex })}
+            onRemove={(index) => emitMutation('QUEUE_REMOVE', { index })}
+          />
         </div>
 
-        {/* Track Input (Only for host for now, or all if we want collaborative queue) */}
-        <form onSubmit={handleAddTrack} className="w-full flex gap-2">
-          <input
-            type="text"
-            placeholder="Paste YouTube URL or ID"
-            value={trackUrl}
-            onChange={(e) => setTrackUrl(e.target.value)}
-            className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-700 transition-all placeholder:text-zinc-600"
-          />
-          <button
-            type="submit"
-            className="bg-zinc-800 hover:bg-zinc-700 text-white p-2 rounded-xl transition-all active:scale-95"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
-        </form>
-
-        {/* Controls */}
-        <div className="flex items-center gap-8">
-          <button className="p-4 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-400 transition-all hover:scale-105 active:scale-95">
-            <SkipForward className="w-6 h-6 rotate-180" />
-          </button>
-          
-          <button 
-            onClick={() => {
-              const isPlaying = roomState?.isPlaying;
-              const playhead = ytPlayerRef.current?.getCurrentTime() || roomState?.currentPlayhead || 0;
-              emitMutation(isPlaying ? 'PAUSE' : 'PLAY', { playhead });
-            }}
-            disabled={!isHost}
-            className={cn(
-              "w-20 h-20 flex items-center justify-center rounded-3xl transition-all hover:scale-105 active:scale-95 shadow-xl disabled:opacity-50 disabled:cursor-not-allowed",
-              roomState?.isPlaying ? "bg-zinc-900 border border-zinc-800 text-white" : "bg-white text-black"
+        {/* Center: Player */}
+        <div className="col-span-1 lg:col-span-1 flex flex-col items-center justify-start space-y-8 w-full">
+          {/* Mock Player */}
+          <div className="w-full aspect-video bg-zinc-900 rounded-3xl border border-zinc-800 flex flex-col items-center justify-center relative overflow-hidden group shadow-2xl">
+            {roomState?.currentTrackId ? (
+              <YouTubePlayer
+                ref={ytPlayerRef}
+                videoId={roomState.currentTrackId}
+                isPlaying={roomState.isPlaying}
+                targetPlayhead={roomState.currentPlayhead}
+                isHost={isHost}
+                onStateChange={handlePlayerStateChange}
+                updatedAt={roomState.updatedAt}
+              />
+            ) : (
+              <div className="z-10 text-center space-y-4 p-6">
+                 <div className="text-sm font-medium text-zinc-500 uppercase tracking-widest">Idle</div>
+                 <h3 className="text-xl md:text-3xl font-bold text-zinc-700 max-w-md mx-auto leading-tight">
+                   Enter a YouTube URL to Start
+                 </h3>
+              </div>
             )}
-          >
-            {roomState?.isPlaying ? <Pause className="w-8 h-8 fill-current" /> : <Play className="w-8 h-8 fill-current" />}
-          </button>
+          </div>
 
-          <button 
-            onClick={() => emitMutation('SKIP')}
-            disabled={!isHost}
-            className="p-4 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-400 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <SkipForward className="w-6 h-6" />
-          </button>
+          {/* Track Input (Only for host for now, or all if we want collaborative queue) */}
+          <form onSubmit={handleAddTrack} className="w-full flex gap-2">
+            <input
+              type="text"
+              placeholder="Paste YouTube URL or ID"
+              value={trackUrl}
+              onChange={(e) => setTrackUrl(e.target.value)}
+              className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-700 transition-all placeholder:text-zinc-600"
+            />
+            <button
+              type="submit"
+              className="bg-zinc-800 hover:bg-zinc-700 text-white p-2 rounded-xl transition-all active:scale-95"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+          </form>
+
+          {/* Controls */}
+          <div className="flex items-center gap-8">
+            <button className="p-4 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-400 transition-all hover:scale-105 active:scale-95">
+              <SkipForward className="w-6 h-6 rotate-180" />
+            </button>
+            
+            <button 
+              onClick={() => {
+                const isPlaying = roomState?.isPlaying;
+                const playhead = ytPlayerRef.current?.getCurrentTime() || roomState?.currentPlayhead || 0;
+                emitMutation(isPlaying ? 'PAUSE' : 'PLAY', { playhead });
+              }}
+              disabled={!isHost}
+              className={cn(
+                "w-20 h-20 flex items-center justify-center rounded-3xl transition-all hover:scale-105 active:scale-95 shadow-xl disabled:opacity-50 disabled:cursor-not-allowed",
+                roomState?.isPlaying ? "bg-zinc-900 border border-zinc-800 text-white" : "bg-white text-black"
+              )}
+            >
+              {roomState?.isPlaying ? <Pause className="w-8 h-8 fill-current" /> : <Play className="w-8 h-8 fill-current" />}
+            </button>
+
+            <button 
+              onClick={() => emitMutation('SKIP')}
+              disabled={!isHost}
+              className="p-4 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-400 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <SkipForward className="w-6 h-6" />
+            </button>
+          </div>
+        </div>
+
+        {/* Right: Chat */}
+        <div className="hidden lg:block lg:col-span-1 h-[500px]">
+          <ChatView messages={messages} onSendMessage={sendMessage} currentUserId={userId} />
         </div>
       </main>
 
