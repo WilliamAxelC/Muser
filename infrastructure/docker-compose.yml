@@ -1,4 +1,20 @@
 services:
+  sync-backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: mrelay-sync-backend
+    environment:
+      - REDIS_URL=redis://state-cache:6379
+      - PORT=3000
+    depends_on:
+      state-cache:
+        condition: service_healthy
+    networks:
+      - mrelay-net
+    ports:
+      - "3000:3000"
+
   state-cache:
     image: redis:7.2-alpine
     container_name: mrelay-state-cache
