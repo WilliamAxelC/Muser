@@ -24,10 +24,13 @@ export interface RoomMutation {
   correlationId: string;
   payload: {
     roomId: string;
-    type: 'PLAY' | 'PAUSE' | 'SEEK' | 'SKIP' | 'QUEUE_REORDER' | 'ROOM_RESYNC';
+    type: 'PLAY' | 'PAUSE' | 'SEEK' | 'SKIP' | 'QUEUE_REORDER' | 'ROOM_RESYNC' | 'QUEUE_ADD' | 'QUEUE_REMOVE' | 'QUEUE_CLEAR' | 'QUEUE_BATCH_APPEND';
     playhead?: number;
     currentTrackId?: string;
     timestamp: number;
+    item?: string;
+    items?: string[];
+    index?: number;
   };
 }
 
@@ -41,5 +44,6 @@ export interface StateSync {
     currentPlayhead: number;
     currentTrackId: string;
     updatedAt: number;
+    queue: string[];
   };
 }

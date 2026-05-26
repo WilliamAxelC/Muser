@@ -35,6 +35,7 @@ export class RoomManager {
           redis.call('HSET', meta_key, 'current_track_id', '')
           redis.call('HSET', meta_key, 'last_playhead', '0')
           redis.call('HSET', meta_key, 'updated_at', timestamp)
+          redis.call('HSET', meta_key, 'queue', '[]')
           host_uid = socket_id
         end
         redis.call('EXPIRE', meta_key, ttl)
@@ -107,18 +108,24 @@ export class RoomManager {
   async setState(roomId: string, state: { 
     isPlaying: boolean, 
     currentPlayhead: number, 
-    currentTrackId: string 
+    currentTrackId: string,
+    queue?: string[]
   }) {
     const metaKey = `room:${roomId}:meta`;
     const ttl = 12 * 60 * 60;
     const timestamp = Date.now();
 
-    await this.redis.hset(metaKey, {
+    const update: any = {
       is_playing: state.isPlaying ? '1' : '0',
       last_playhead: state.currentPlayhead.toString(),
       current_track_id: state.currentTrackId,
       updated_at: timestamp.toString()
-    });
+    };
+    if (state.queue) {
+      update.queue = JSON.stringify(state.queue);
+    }
+
+    await this.redis.hset(metaKey, update);
     await this.redis.expire(metaKey, ttl);
   }
 
@@ -132,7 +139,8 @@ export class RoomManager {
       isPlaying: data.is_playing === '1',
       currentPlayhead: parseFloat(data.last_playhead || '0'),
       currentTrackId: data.current_track_id || '',
-      updatedAt: parseInt(data.updated_at || '0')
+      updatedAt: parseInt(data.updated_at || '0'),
+      queue: JSON.parse(data.queue || '[]')
     };
   }
 }
