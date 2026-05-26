@@ -1,0 +1,16 @@
+services:
+  state-cache:
+    image: redis:7.2-alpine
+    container_name: mrelay-state-cache
+    networks:
+      - mrelay-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+networks:
+  mrelay-net:
+    driver: bridge
