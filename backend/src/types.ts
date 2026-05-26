@@ -7,6 +7,7 @@ export interface ClientToServerEvents {
 export interface ServerToClientEvents {
   STATE_SYNC: (data: StateSync) => void;
   HOST_CHANGED: (data: { hostId: string }) => void;
+  ERROR: (data: { message: string }) => void;
 }
 
 export interface InterServerEvents {}
