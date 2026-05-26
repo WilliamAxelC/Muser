@@ -27,7 +27,7 @@ const io = new Server<
   SocketData
 >(httpServer, {
   cors: { 
-    origin: ["http://localhost:8080", "http://127.0.0.1:8080", "https://mrelay.012018.xyz"],
+    origin: true, // Dynamically allow exact request origin to bypass strict tunnel CORS mismatch
     methods: ["GET", "POST"],
     credentials: true
   },
@@ -57,13 +57,24 @@ redis.on('error', (err) => logger.error({ message: 'Redis connection error', err
 
 app.get('/health', (req, res) => res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() }));
 
+io.use((socket, next) => {
+  const origin = socket.handshake.headers.origin || socket.handshake.headers.referer || 'unknown';
+  logger.info({ 
+    message: '[Diagnostic] Incoming connection attempt', 
+    origin,
+    socket_id: socket.id,
+    query: socket.handshake.query
+  });
+  next();
+});
+
 io.on('connection', (socket) => {
   const correlation_id = socket.handshake.query.correlationId as string || 'initial';
   const roomId = socket.handshake.query.roomId as string;
   const userId = socket.handshake.query.userId as string || `user-${socket.id}`;
 
   if (!roomId) {
-    logger.warn({ message: 'Connection attempt without roomId', socket_id: socket.id });
+    logger.warn({ message: '[Diagnostic] Connection attempt without roomId', socket_id: socket.id });
     socket.disconnect();
     return;
   }
@@ -73,7 +84,7 @@ io.on('connection', (socket) => {
   socket.join(roomId);
 
   roomManager.join(roomId, socket.id, userId).then(async (hostId) => {
-    logger.info({ message: 'User joined room', socket_id: socket.id, room_id: roomId, user_id: userId, host_id: hostId, correlation_id });
+    logger.info({ message: '[Diagnostic] User joined room', socket_id: socket.id, room_id: roomId, user_id: userId, host_id: hostId, correlation_id });
 
     // Initial sync
     const state = await roomManager.getState(roomId);
@@ -94,14 +105,15 @@ io.on('connection', (socket) => {
     
     io.to(roomId).emit('HOST_CHANGED', { hostId });
   }).catch(err => {
-    logger.error({ message: 'Error joining room', error: err, socket_id: socket.id });
+    logger.error({ message: '[Diagnostic] Error joining room', error: err, socket_id: socket.id });
     socket.disconnect();
   });
 
   socket.on('ROOM_MUTATION', async (data) => {
+    logger.info({ message: '[Diagnostic] Raw Incoming ROOM_MUTATION', socket_id: socket.id, raw_data: data });
     const result = RoomMutationSchema.safeParse(data);
     if (!result.success) {
-      logger.warn({ message: 'Invalid mutation schema', socket_id: socket.id, error: result.error });
+      logger.warn({ message: '[Diagnostic] Invalid mutation schema', socket_id: socket.id, error: result.error });
       return;
     }
 
