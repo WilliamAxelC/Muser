@@ -45,14 +45,15 @@ const RoomMutationSchema = z.object({
   correlationId: z.string().max(100),
   payload: z.object({
     roomId: z.string().min(1).max(50).regex(/^[a-zA-Z0-9_-]+$/),
-    type: z.enum(['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'QUEUE_REORDER', 'ROOM_RESYNC', 'QUEUE_ADD', 'QUEUE_REMOVE', 'QUEUE_CLEAR', 'QUEUE_BATCH_APPEND']),
+    type: z.enum(['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'QUEUE_REORDER', 'ROOM_RESYNC', 'QUEUE_ADD', 'QUEUE_REMOVE', 'QUEUE_CLEAR', 'QUEUE_BATCH_APPEND', 'SET_PUBLIC']),
     playhead: z.number().min(0).optional(),
     currentTrackId: z.string().length(11).regex(/^[a-zA-Z0-9_-]{11}$/).optional().or(z.literal('')),
     timestamp: z.number(),
     item: z.string().optional(),
     items: z.array(z.string()).optional(),
     index: z.number().optional(),
-    newIndex: z.number().optional()
+    newIndex: z.number().optional(),
+    isPublic: z.boolean().optional()
   })
 });
 
@@ -66,6 +67,16 @@ redis.on('error', (err) => logger.error({ message: 'Redis connection error', err
 
 app.get('/health', (req, res) => res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() }));
 
+app.get('/api/rooms', async (req, res) => {
+  try {
+    const rooms = await roomManager.getActivePublicRooms();
+    res.json({ rooms });
+  } catch (err) {
+    logger.error({ message: 'Failed to fetch public rooms', error: err });
+    res.status(500).json({ error: 'Failed to fetch public rooms' });
+  }
+});
+
 io.use((socket, next) => {
   const origin = socket.handshake.headers.origin || socket.handshake.headers.referer || 'unknown';
   logger.info({ 
@@ -77,16 +88,25 @@ io.use((socket, next) => {
   next();
 });
 
-io.on('connection', (socket) => {
+io.on('connection', async (socket) => {
   const correlation_id = socket.handshake.query.correlationId as string || 'initial';
   const roomId = socket.handshake.query.roomId as string;
   const userId = socket.handshake.query.userId as string || `user-${socket.id}`;
-  const username = socket.handshake.query.username as string || `Guest_${socket.id.substring(0,4)}`;
+  let username = socket.handshake.query.username as string || `Guest_${socket.id.substring(0,4)}`;
 
   if (!roomId) {
     logger.warn({ message: '[Diagnostic] Connection attempt without roomId', socket_id: socket.id });
     socket.disconnect();
     return;
+  }
+
+  // Deduplication
+  const existingSockets = await io.in(roomId).fetchSockets();
+  let baseName = username.replace(/\s\(\d+\)$/, '');
+  let suffix = 1;
+  while (existingSockets.some(s => s.data.username === username && s.data.userId !== userId)) {
+    username = `${baseName} (${suffix})`;
+    suffix++;
   }
 
   socket.data.roomId = roomId;
@@ -129,7 +149,8 @@ io.on('connection', (socket) => {
           currentPlayhead: state.currentPlayhead,
           currentTrackId: state.currentTrackId,
           updatedAt: state.updatedAt,
-          queue: state.queue || []
+          queue: state.queue || [],
+          isPublic: state.isPublic || false
         }
       });
     }

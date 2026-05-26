@@ -109,7 +109,8 @@ export class RoomManager {
     isPlaying: boolean, 
     currentPlayhead: number, 
     currentTrackId: string,
-    queue?: string[]
+    queue?: string[],
+    isPublic?: boolean
   }) {
     const metaKey = `room:${roomId}:meta`;
     const ttl = 12 * 60 * 60;
@@ -123,6 +124,9 @@ export class RoomManager {
     };
     if (state.queue) {
       update.queue = JSON.stringify(state.queue);
+    }
+    if (state.isPublic !== undefined) {
+      update.is_public = state.isPublic ? '1' : '0';
     }
 
     await this.redis.hset(metaKey, update);
@@ -140,7 +144,25 @@ export class RoomManager {
       currentPlayhead: parseFloat(data.last_playhead || '0'),
       currentTrackId: data.current_track_id || '',
       updatedAt: parseInt(data.updated_at || '0'),
-      queue: JSON.parse(data.queue || '[]')
+      queue: JSON.parse(data.queue || '[]'),
+      isPublic: data.is_public === '1'
     };
+  }
+
+  async getActivePublicRooms() {
+    const keys = await this.redis.keys('room:*:meta');
+    const rooms = [];
+    for (const key of keys) {
+      const data = await this.redis.hgetall(key);
+      if (data && data.is_public === '1') {
+        const roomId = key.split(':')[1];
+        // Could fetch join_order size for user count if needed
+        rooms.push({
+          roomId,
+          updatedAt: parseInt(data.updated_at || '0')
+        });
+      }
+    }
+    return rooms.sort((a, b) => b.updatedAt - a.updatedAt);
   }
 }
