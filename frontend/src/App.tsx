@@ -21,8 +21,19 @@ function App() {
   });
 
   const [inputRoomId, setInputRoomId] = useState('');
-  const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
+  const [activeRoomId, setActiveRoomId] = useState<string | null>(() => {
+    const match = window.location.pathname.match(/^\/room\/([A-Za-z0-9_-]+)/);
+    return match ? match[1].toUpperCase() : null;
+  });
   const [trackUrl, setTrackUrl] = useState('');
+
+  React.useEffect(() => {
+    if (activeRoomId) {
+      window.history.replaceState({}, '', `/room/${activeRoomId.toLowerCase()}`);
+    } else {
+      window.history.replaceState({}, '', '/');
+    }
+  }, [activeRoomId]);
 
   const { isConnected, roomState, hostId, isHost, emitMutation, socketId, messages, sendMessage } = useSocket(activeRoomId, userId, username);
   const ytPlayerRef = useRef<YouTubePlayerRef>(null);
@@ -118,56 +129,112 @@ function App() {
     }
   }, [roomState?.currentTrackId, activeRoomId, emitMutation]);
 
+  const [publicRooms, setPublicRooms] = useState<{roomId: string, updatedAt: number}[]>([]);
+  const [isCreatingPublic, setIsCreatingPublic] = useState(true);
+
+  React.useEffect(() => {
+    if (!activeRoomId) {
+      fetch('/api/rooms').then(res => res.json()).then(data => {
+        if (data.rooms) setPublicRooms(data.rooms);
+      }).catch(err => console.error(err));
+    }
+  }, [activeRoomId]);
+
   const handleLeave = () => {
     setActiveRoomId(null);
     setInputRoomId('');
   };
 
+  const handleCreateRoom = () => {
+    const newRoomId = Math.random().toString(36).substr(2, 6).toUpperCase();
+    setActiveRoomId(newRoomId);
+    // Setting public state happens after connecting, we need to wait for isConnected
+  };
+
+  React.useEffect(() => {
+    if (activeRoomId && isConnected && isHost) {
+        emitMutation('SET_PUBLIC', { isPublic: isCreatingPublic });
+    }
+  }, [activeRoomId, isConnected, isHost]);
+
   if (!activeRoomId) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="w-full max-w-md space-y-8 bg-zinc-900/50 p-8 rounded-2xl border border-zinc-800 backdrop-blur-sm">
-          <div className="text-center space-y-2">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-zinc-800 mb-4">
-              <Radio className="w-8 h-8 text-zinc-400" />
+        <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="space-y-8 bg-zinc-900/50 p-8 rounded-2xl border border-zinc-800 backdrop-blur-sm">
+            <div className="space-y-2">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-zinc-800 mb-4">
+                <Radio className="w-8 h-8 text-zinc-400" />
+              </div>
+              <h1 className="text-3xl font-bold tracking-tight text-white">MRelay</h1>
+              <p className="text-zinc-400">Collaborative Sync-Stream Platform</p>
             </div>
-            <h1 className="text-3xl font-bold tracking-tight text-white">MRelay</h1>
-            <p className="text-zinc-400">Collaborative Sync-Stream Platform</p>
-          </div>
 
-          <form onSubmit={handleJoin} className="space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="username" className="text-sm font-medium text-zinc-400 ml-1">
-                Display Name
-              </label>
-              <input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => handleNameChange(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-lg font-mono focus:outline-none focus:ring-2 focus:ring-zinc-700 transition-all placeholder:text-zinc-700"
-              />
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label htmlFor="username" className="text-sm font-medium text-zinc-400 ml-1">
+                  Display Name
+                </label>
+                <input
+                  id="username"
+                  type="text"
+                  value={username}
+                  onChange={(e) => handleNameChange(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-lg font-mono focus:outline-none focus:ring-2 focus:ring-zinc-700 transition-all placeholder:text-zinc-700 text-white"
+                />
+              </div>
+              <div className="pt-4 border-t border-zinc-800">
+                <h3 className="text-sm font-bold text-zinc-300 uppercase mb-4">Create New Room</h3>
+                <div className="flex items-center gap-4 mb-4">
+                  <label className="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
+                    <input type="checkbox" checked={isCreatingPublic} onChange={(e) => setIsCreatingPublic(e.target.checked)} className="rounded border-zinc-700 bg-zinc-900 text-white" />
+                    Public Room
+                  </label>
+                </div>
+                <button
+                  onClick={handleCreateRoom}
+                  className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-500 active:scale-[0.98] transition-all"
+                >
+                  Create Room
+                </button>
+              </div>
+              <form onSubmit={handleJoin} className="pt-4 border-t border-zinc-800">
+                 <h3 className="text-sm font-bold text-zinc-300 uppercase mb-4">Join Existing</h3>
+                <div className="flex gap-2">
+                  <input
+                    id="room-id"
+                    type="text"
+                    placeholder="ROOM CODE"
+                    value={inputRoomId}
+                    onChange={(e) => setInputRoomId(e.target.value)}
+                    className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-zinc-700 transition-all placeholder:text-zinc-700 uppercase text-white"
+                  />
+                  <button
+                    type="submit"
+                    className="bg-white text-black font-bold px-6 rounded-xl hover:bg-zinc-200 active:scale-[0.98] transition-all"
+                  >
+                    Join
+                  </button>
+                </div>
+              </form>
             </div>
-            <div className="space-y-2">
-              <label htmlFor="room-id" className="text-sm font-medium text-zinc-400 ml-1">
-                Room ID
-              </label>
-              <input
-                id="room-id"
-                type="text"
-                placeholder="ENTER ROOM CODE"
-                value={inputRoomId}
-                onChange={(e) => setInputRoomId(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-lg font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-zinc-700 transition-all placeholder:text-zinc-700 uppercase"
-              />
+          </div>
+          
+          <div className="space-y-4 bg-zinc-900/50 p-8 rounded-2xl border border-zinc-800 backdrop-blur-sm flex flex-col">
+            <h3 className="text-lg font-bold text-zinc-300 uppercase tracking-widest border-b border-zinc-800 pb-4">Public Rooms</h3>
+            <div className="flex-1 overflow-y-auto space-y-2 py-4">
+               {publicRooms.length === 0 ? (
+                 <div className="text-zinc-500 text-sm text-center mt-8">No public rooms available.</div>
+               ) : (
+                 publicRooms.map((room) => (
+                   <div key={room.roomId} className="flex items-center justify-between p-4 bg-zinc-950 rounded-xl border border-zinc-800 hover:border-zinc-700 transition-colors">
+                     <span className="font-mono text-zinc-300 font-bold">{room.roomId}</span>
+                     <button onClick={() => setActiveRoomId(room.roomId)} className="text-sm bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg transition-colors">Join</button>
+                   </div>
+                 ))
+               )}
             </div>
-            <button
-              type="submit"
-              className="w-full bg-white text-black font-bold py-3 rounded-xl hover:bg-zinc-200 active:scale-[0.98] transition-all"
-            >
-              Join Room
-            </button>
-          </form>
+          </div>
         </div>
       </div>
     );

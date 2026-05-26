@@ -15,6 +15,7 @@ interface StateSync {
   currentTrackId: string;
   updatedAt: number;
   queue: string[];
+  isPublic?: boolean;
 }
 
 export function useSocket(roomId: string | null, userId: string, username: string) {

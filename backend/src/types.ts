@@ -34,7 +34,7 @@ export interface RoomMutation {
   correlationId: string;
   payload: {
     roomId: string;
-    type: 'PLAY' | 'PAUSE' | 'SEEK' | 'SKIP' | 'QUEUE_REORDER' | 'ROOM_RESYNC' | 'QUEUE_ADD' | 'QUEUE_REMOVE' | 'QUEUE_CLEAR' | 'QUEUE_BATCH_APPEND';
+    type: 'PLAY' | 'PAUSE' | 'SEEK' | 'SKIP' | 'QUEUE_REORDER' | 'ROOM_RESYNC' | 'QUEUE_ADD' | 'QUEUE_REMOVE' | 'QUEUE_CLEAR' | 'QUEUE_BATCH_APPEND' | 'SET_PUBLIC';
     playhead?: number;
     currentTrackId?: string;
     timestamp: number;
@@ -42,6 +42,7 @@ export interface RoomMutation {
     items?: string[];
     index?: number;
     newIndex?: number;
+    isPublic?: boolean;
   };
 }
 
@@ -56,5 +57,6 @@ export interface StateSync {
     currentTrackId: string;
     updatedAt: number;
     queue: string[];
+    isPublic?: boolean;
   };
 }
