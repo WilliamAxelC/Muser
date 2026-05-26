@@ -1,4 +1,20 @@
 services:
+  music-frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_BACKEND_URL=http://localhost:3000
+    container_name: mrelay-music-frontend
+    environment:
+      - VITE_BACKEND_URL=http://localhost:3000
+    networks:
+      - mrelay-net
+    ports:
+      - "8080:8080"
+    depends_on:
+      - sync-backend
+
   sync-backend:
     build:
       context: ../backend
