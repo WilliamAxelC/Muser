@@ -72,6 +72,7 @@ io.on('connection', (socket) => {
   const correlation_id = socket.handshake.query.correlationId as string || 'initial';
   const roomId = socket.handshake.query.roomId as string;
   const userId = socket.handshake.query.userId as string || `user-${socket.id}`;
+  const username = socket.handshake.query.username as string || `Guest_${socket.id.substring(0,4)}`;
 
   if (!roomId) {
     logger.warn({ message: '[Diagnostic] Connection attempt without roomId', socket_id: socket.id });
@@ -81,7 +82,15 @@ io.on('connection', (socket) => {
 
   socket.data.roomId = roomId;
   socket.data.userId = userId;
+  socket.data.username = username;
   socket.join(roomId);
+
+  const broadcastHostChange = async (rId: string, hId: string) => {
+    const sockets = await io.in(rId).fetchSockets();
+    const hostSocket = sockets.find(s => s.id === hId);
+    const hostName = hostSocket?.data.username || hId;
+    io.to(rId).emit('HOST_CHANGED', { hostId: hId, hostName });
+  };
 
   roomManager.join(roomId, socket.id, userId).then(async (hostId) => {
     let currentHostId = hostId;
@@ -96,7 +105,7 @@ io.on('connection', (socket) => {
       currentHostId = migratedHost || socket.id;
     }
 
-    logger.info({ message: '[Diagnostic] User joined room', socket_id: socket.id, room_id: roomId, user_id: userId, host_id: currentHostId, correlation_id });
+    logger.info({ message: '[Diagnostic] User joined room', socket_id: socket.id, room_id: roomId, user_id: userId, username, host_id: currentHostId, correlation_id });
 
     // Initial sync
     const state = await roomManager.getState(roomId);
@@ -115,7 +124,7 @@ io.on('connection', (socket) => {
       });
     }
     
-    io.to(roomId).emit('HOST_CHANGED', { hostId: currentHostId });
+    await broadcastHostChange(roomId, currentHostId);
   }).catch(err => {
     logger.error({ message: '[Diagnostic] Error joining room', error: err, socket_id: socket.id });
     socket.disconnect();
@@ -149,7 +158,7 @@ io.on('connection', (socket) => {
         logger.warn({ message: `[Self-Healing] Phantom host ${state.hostId} dead during mutation. Forcing migration.` });
         const newHostId = await roomManager.leave(mutation.payload.roomId, state.hostId);
         if (newHostId) {
-          io.to(mutation.payload.roomId).emit('HOST_CHANGED', { hostId: newHostId });
+          await broadcastHostChange(mutation.payload.roomId, newHostId);
         }
         // Refresh state after healing
         state = await roomManager.getState(mutation.payload.roomId);
@@ -213,7 +222,7 @@ io.on('connection', (socket) => {
           const newHostId = await roomManager.leave(rId, socket.id);
           if (newHostId && newHostId !== '') {
             logger.info({ message: 'Host migrated', room_id: rId, old_host_id: socket.id, new_host_id: newHostId });
-            io.to(rId).emit('HOST_CHANGED', { hostId: newHostId });
+            await broadcastHostChange(rId, newHostId);
           }
         }
       } catch (err) {

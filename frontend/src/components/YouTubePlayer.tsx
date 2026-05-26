@@ -27,7 +27,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
   const playerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isReady, setIsReady] = useState(false);
-  const isProcessingRemoteEvent = useRef(false);
+  const isAutomatedChange = useRef(false);
 
   // Load YouTube API
   useEffect(() => {
@@ -77,10 +77,10 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
     // Apply Play/Pause
     const currentPlayerState = playerRef.current.getPlayerState();
     if (isPlaying && currentPlayerState !== 1) { // 1 = playing
-      isProcessingRemoteEvent.current = true;
+      isAutomatedChange.current = true;
       playerRef.current.playVideo();
     } else if (!isPlaying && currentPlayerState === 1) {
-      isProcessingRemoteEvent.current = true;
+      isAutomatedChange.current = true;
       playerRef.current.pauseVideo();
     }
 
@@ -88,19 +88,24 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
     const localPlayhead = playerRef.current.getCurrentTime();
     const transitDelay = (Date.now() - updatedAt) / 1000;
     const computedTarget = isPlaying ? targetPlayhead + transitDelay : targetPlayhead;
-    const delta = Math.abs(localPlayhead - computedTarget);
+    const drift = localPlayhead - computedTarget;
 
-    if (delta > 1.5) {
+    // Sync Deadzone: Early return to suppress minor fractional offsets
+    if (Math.abs(drift) < 2.0) {
+      return;
+    }
+
+    if (!isNaN(computedTarget)) {
       const safeTarget = Math.max(0, computedTarget);
-      console.log(`[Sync] Drift detected: ${delta.toFixed(2)}s. Seeking to ${safeTarget.toFixed(2)}s`);
-      isProcessingRemoteEvent.current = true;
+      console.log(`[Sync] Drift detected: ${drift.toFixed(2)}s. Seeking to ${safeTarget.toFixed(2)}s`);
+      isAutomatedChange.current = true;
       playerRef.current.seekTo(safeTarget, true);
     }
   }, [isReady, isPlaying, targetPlayhead, updatedAt]);
 
   const handlePlayerStateChange = (event: any) => {
-    if (isProcessingRemoteEvent.current) {
-      isProcessingRemoteEvent.current = false;
+    if (isAutomatedChange.current) {
+      isAutomatedChange.current = false;
       return;
     }
 
