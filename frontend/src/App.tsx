@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useSocket } from './hooks/useSocket';
 import { cn } from './lib/utils';
 import { Play, Pause, SkipForward, Users, Radio, LogOut, Plus } from 'lucide-react';
 import { YouTubePlayer } from './components/YouTubePlayer';
+import type { YouTubePlayerRef } from './components/YouTubePlayer';
 
 function App() {
   const [userId] = useState(() => {
@@ -22,6 +23,7 @@ function App() {
   const [trackUrl, setTrackUrl] = useState('');
 
   const { isConnected, roomState, hostId, isHost, emitMutation, socketId } = useSocket(activeRoomId, userId, username);
+  const ytPlayerRef = useRef<YouTubePlayerRef>(null);
 
   const handleNameChange = (newName: string) => {
     setUsername(newName);
@@ -35,17 +37,58 @@ function App() {
     }
   };
 
-  const handleAddTrack = (e: React.FormEvent) => {
+  const handleAddTrack = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Add Track Attempt:', trackUrl);
+    if (!trackUrl.trim()) return;
+
+    // Check for Playlist
+    const listRegex = /[?&]list=([a-zA-Z0-9_-]+)/;
+    const listMatch = trackUrl.match(listRegex);
+
+    if (listMatch) {
+      const listId = listMatch[1];
+      try {
+        const response = await fetch(`/api/playlist/${listId}`);
+        if (response.ok) {
+          const data = await response.json();
+          let items = data.items || [];
+          
+          // Fisher-Yates shuffle
+          for (let i = items.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [items[i], items[j]] = [items[j], items[i]];
+          }
+          
+          if (items.length > 0) {
+            if (!roomState?.currentTrackId) {
+              const first = items.shift();
+              emitMutation('ROOM_RESYNC', { currentTrackId: first, playhead: 0 });
+              if (items.length > 0) {
+                emitMutation('QUEUE_BATCH_APPEND', { items });
+              }
+            } else {
+              emitMutation('QUEUE_BATCH_APPEND', { items });
+            }
+            setTrackUrl('');
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch playlist', err);
+      }
+      return;
+    }
+
     // Comprehensive YouTube ID extractor
     const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|music\.youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/;
     const match = trackUrl.match(regex);
     const videoId = match ? match[1] : (trackUrl.trim().length === 11 ? trackUrl.trim() : null);
     
-    console.log('Extracted Video ID:', videoId);
     if (videoId) {
-      emitMutation('ROOM_RESYNC', { currentTrackId: videoId, playhead: 0 });
+      if (!roomState?.currentTrackId) {
+        emitMutation('ROOM_RESYNC', { currentTrackId: videoId, playhead: 0 });
+      } else {
+        emitMutation('QUEUE_ADD', { item: videoId });
+      }
       setTrackUrl('');
     } else {
       console.warn('Invalid YouTube URL or ID');
@@ -158,6 +201,7 @@ function App() {
         <div className="w-full aspect-video bg-zinc-900 rounded-3xl border border-zinc-800 flex flex-col items-center justify-center relative overflow-hidden group shadow-2xl">
           {roomState?.currentTrackId ? (
             <YouTubePlayer
+              ref={ytPlayerRef}
               videoId={roomState.currentTrackId}
               isPlaying={roomState.isPlaying}
               targetPlayhead={roomState.currentPlayhead}
@@ -199,7 +243,11 @@ function App() {
           </button>
           
           <button 
-            onClick={() => emitMutation(roomState?.isPlaying ? 'PAUSE' : 'PLAY')}
+            onClick={() => {
+              const isPlaying = roomState?.isPlaying;
+              const playhead = ytPlayerRef.current?.getCurrentTime() || roomState?.currentPlayhead || 0;
+              emitMutation(isPlaying ? 'PAUSE' : 'PLAY', { playhead });
+            }}
             disabled={!isHost}
             className={cn(
               "w-20 h-20 flex items-center justify-center rounded-3xl transition-all hover:scale-105 active:scale-95 shadow-xl disabled:opacity-50 disabled:cursor-not-allowed",
@@ -209,7 +257,11 @@ function App() {
             {roomState?.isPlaying ? <Pause className="w-8 h-8 fill-current" /> : <Play className="w-8 h-8 fill-current" />}
           </button>
 
-          <button className="p-4 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-400 transition-all hover:scale-105 active:scale-95">
+          <button 
+            onClick={() => emitMutation('SKIP')}
+            disabled={!isHost}
+            className="p-4 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-400 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             <SkipForward className="w-6 h-6" />
           </button>
         </div>

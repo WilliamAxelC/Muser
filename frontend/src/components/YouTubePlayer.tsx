@@ -1,10 +1,14 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
 
 declare global {
   interface Window {
     onYouTubeIframeAPIReady: () => void;
     YT: any;
   }
+}
+
+export interface YouTubePlayerRef {
+  getCurrentTime: () => number;
 }
 
 interface YouTubePlayerProps {
@@ -16,18 +20,27 @@ interface YouTubePlayerProps {
   updatedAt: number;
 }
 
-export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
+export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
   videoId,
   isPlaying,
   targetPlayhead,
   isHost,
   onStateChange,
   updatedAt
-}) => {
+}, ref) => {
   const playerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isReady, setIsReady] = useState(false);
   const isAutomatedChange = useRef(false);
+
+  useImperativeHandle(ref, () => ({
+    getCurrentTime: () => {
+      if (playerRef.current && isReady) {
+        return playerRef.current.getCurrentTime() || 0;
+      }
+      return 0;
+    }
+  }));
 
   // Load YouTube API
   useEffect(() => {
@@ -127,4 +140,4 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
       <div ref={containerRef} />
     </div>
   );
-};
+});

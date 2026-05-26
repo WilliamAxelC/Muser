@@ -45,10 +45,13 @@ const RoomMutationSchema = z.object({
   correlationId: z.string().max(100),
   payload: z.object({
     roomId: z.string().min(1).max(50).regex(/^[a-zA-Z0-9_-]+$/),
-    type: z.enum(['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'QUEUE_REORDER', 'ROOM_RESYNC']),
+    type: z.enum(['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'QUEUE_REORDER', 'ROOM_RESYNC', 'QUEUE_ADD', 'QUEUE_REMOVE', 'QUEUE_CLEAR', 'QUEUE_BATCH_APPEND']),
     playhead: z.number().min(0).optional(),
-    currentTrackId: z.string().length(11).regex(/^[a-zA-Z0-9_-]{11}$/).optional(),
-    timestamp: z.number()
+    currentTrackId: z.string().length(11).regex(/^[a-zA-Z0-9_-]{11}$/).optional().or(z.literal('')),
+    timestamp: z.number(),
+    item: z.string().optional(),
+    items: z.array(z.string()).optional(),
+    index: z.number().optional()
   })
 });
 
@@ -119,7 +122,8 @@ io.on('connection', (socket) => {
           isPlaying: state.isPlaying,
           currentPlayhead: state.currentPlayhead,
           currentTrackId: state.currentTrackId,
-          updatedAt: state.updatedAt
+          updatedAt: state.updatedAt,
+          queue: state.queue || []
         }
       });
     }
@@ -182,14 +186,38 @@ io.on('connection', (socket) => {
     let isPlaying = state?.isPlaying ?? false;
     let currentPlayhead = mutation.payload.playhead ?? state?.currentPlayhead ?? 0;
     let currentTrackId = mutation.payload.currentTrackId ?? state?.currentTrackId ?? '';
+    let queue = state?.queue || [];
 
     if (mutation.payload.type === 'PLAY') isPlaying = true;
     if (mutation.payload.type === 'PAUSE') isPlaying = false;
+    
+    if (mutation.payload.type === 'QUEUE_ADD' && mutation.payload.item) {
+        queue.push(mutation.payload.item);
+    }
+    if (mutation.payload.type === 'QUEUE_REMOVE' && mutation.payload.index !== undefined) {
+        queue.splice(mutation.payload.index, 1);
+    }
+    if (mutation.payload.type === 'QUEUE_CLEAR') {
+        queue = [];
+    }
+    if (mutation.payload.type === 'QUEUE_BATCH_APPEND' && mutation.payload.items) {
+        queue = queue.concat(mutation.payload.items);
+    }
+    if (mutation.payload.type === 'SKIP') {
+        if (queue.length > 0) {
+            currentTrackId = queue.shift() as string;
+            currentPlayhead = 0;
+            isPlaying = true;
+        } else {
+            currentPlayhead = 0;
+        }
+    }
 
     await roomManager.setState(mutation.payload.roomId, {
       isPlaying,
       currentPlayhead,
-      currentTrackId
+      currentTrackId,
+      queue
     });
 
     // Broadcast Sync
@@ -202,7 +230,8 @@ io.on('connection', (socket) => {
         isPlaying,
         currentPlayhead,
         currentTrackId,
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
+        queue
       }
     });
   });
