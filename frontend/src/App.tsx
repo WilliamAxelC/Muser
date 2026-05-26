@@ -273,6 +273,11 @@ function App() {
             isHost={isHost} 
             onReorder={(oldIndex, newIndex) => emitMutation('QUEUE_REORDER', { index: oldIndex, newIndex })}
             onRemove={(index) => emitMutation('QUEUE_REMOVE', { index })}
+            isRequestOnly={roomState?.isRequestOnly}
+            onToggleRequestOnly={(val) => emitMutation('SET_REQUEST_ONLY', { isRequestOnly: val })}
+            pendingRequests={roomState?.pendingRequests}
+            onApprove={(id) => emitMutation('APPROVE_REQUEST', { requestId: id })}
+            onDeny={(id) => emitMutation('DENY_REQUEST', { requestId: id })}
           />
         </div>
 

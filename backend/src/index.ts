@@ -45,7 +45,7 @@ const RoomMutationSchema = z.object({
   correlationId: z.string().max(100),
   payload: z.object({
     roomId: z.string().min(1).max(50).regex(/^[a-zA-Z0-9_-]+$/),
-    type: z.enum(['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'QUEUE_REORDER', 'ROOM_RESYNC', 'QUEUE_ADD', 'QUEUE_REMOVE', 'QUEUE_CLEAR', 'QUEUE_BATCH_APPEND', 'SET_PUBLIC']),
+    type: z.enum(['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'QUEUE_REORDER', 'ROOM_RESYNC', 'QUEUE_ADD', 'QUEUE_REMOVE', 'QUEUE_CLEAR', 'QUEUE_BATCH_APPEND', 'SET_PUBLIC', 'SET_REQUEST_ONLY', 'APPROVE_REQUEST', 'DENY_REQUEST']),
     playhead: z.number().min(0).optional(),
     currentTrackId: z.string().length(11).regex(/^[a-zA-Z0-9_-]{11}$/).optional().or(z.literal('')),
     timestamp: z.number(),
@@ -53,7 +53,9 @@ const RoomMutationSchema = z.object({
     items: z.array(z.string()).optional(),
     index: z.number().optional(),
     newIndex: z.number().optional(),
-    isPublic: z.boolean().optional()
+    isPublic: z.boolean().optional(),
+    isRequestOnly: z.boolean().optional(),
+    requestId: z.string().optional()
   })
 });
 
@@ -150,7 +152,9 @@ io.on('connection', async (socket) => {
           currentTrackId: state.currentTrackId,
           updatedAt: state.updatedAt,
           queue: state.queue || [],
-          isPublic: state.isPublic || false
+          isPublic: state.isPublic || false,
+          isRequestOnly: state.isRequestOnly || false,
+          pendingRequests: state.pendingRequests || []
         }
       });
     }
@@ -214,12 +218,53 @@ io.on('connection', async (socket) => {
     let currentPlayhead = mutation.payload.playhead ?? state?.currentPlayhead ?? 0;
     let currentTrackId = mutation.payload.currentTrackId ?? state?.currentTrackId ?? '';
     let queue = state?.queue || [];
+    let isPublic = state?.isPublic ?? false;
+    let isRequestOnly = state?.isRequestOnly ?? false;
+    let pendingRequests = state?.pendingRequests || [];
 
     if (mutation.payload.type === 'PLAY') isPlaying = true;
     if (mutation.payload.type === 'PAUSE') isPlaying = false;
     
+    if (mutation.payload.type === 'SET_PUBLIC' && mutation.payload.isPublic !== undefined) {
+        isPublic = mutation.payload.isPublic;
+    }
+    
+    if (mutation.payload.type === 'SET_REQUEST_ONLY' && mutation.payload.isRequestOnly !== undefined) {
+        isRequestOnly = mutation.payload.isRequestOnly;
+    }
+
     if (mutation.payload.type === 'QUEUE_ADD' && mutation.payload.item) {
-        queue.push(mutation.payload.item);
+        if (isRequestOnly && socket.id !== state?.hostId) {
+            // Route to pending requests
+            pendingRequests.push({
+                id: `req-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+                trackId: mutation.payload.item,
+                username: socket.data.username
+            });
+            // Emit a notification back to the sender
+            socket.emit('ERROR', { message: 'Track submitted for host approval.' });
+        } else {
+            queue.push(mutation.payload.item);
+        }
+    }
+    
+    if (mutation.payload.type === 'APPROVE_REQUEST' && mutation.payload.requestId) {
+        if (socket.id === state?.hostId) {
+            const reqIndex = pendingRequests.findIndex((r: any) => r.id === mutation.payload.requestId);
+            if (reqIndex !== -1) {
+                const req = pendingRequests.splice(reqIndex, 1)[0];
+                queue.push(req.trackId);
+            }
+        }
+    }
+    
+    if (mutation.payload.type === 'DENY_REQUEST' && mutation.payload.requestId) {
+        if (socket.id === state?.hostId) {
+            const reqIndex = pendingRequests.findIndex((r: any) => r.id === mutation.payload.requestId);
+            if (reqIndex !== -1) {
+                pendingRequests.splice(reqIndex, 1);
+            }
+        }
     }
     if (mutation.payload.type === 'QUEUE_REMOVE' && mutation.payload.index !== undefined) {
         queue.splice(mutation.payload.index, 1);

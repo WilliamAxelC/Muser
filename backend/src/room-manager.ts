@@ -110,7 +110,9 @@ export class RoomManager {
     currentPlayhead: number, 
     currentTrackId: string,
     queue?: string[],
-    isPublic?: boolean
+    isPublic?: boolean,
+    isRequestOnly?: boolean,
+    pendingRequests?: { id: string; trackId: string; username: string }[]
   }) {
     const metaKey = `room:${roomId}:meta`;
     const ttl = 12 * 60 * 60;
@@ -127,6 +129,12 @@ export class RoomManager {
     }
     if (state.isPublic !== undefined) {
       update.is_public = state.isPublic ? '1' : '0';
+    }
+    if (state.isRequestOnly !== undefined) {
+      update.is_request_only = state.isRequestOnly ? '1' : '0';
+    }
+    if (state.pendingRequests) {
+      update.pending_requests = JSON.stringify(state.pendingRequests);
     }
 
     await this.redis.hset(metaKey, update);
@@ -145,7 +153,9 @@ export class RoomManager {
       currentTrackId: data.current_track_id || '',
       updatedAt: parseInt(data.updated_at || '0'),
       queue: JSON.parse(data.queue || '[]'),
-      isPublic: data.is_public === '1'
+      isPublic: data.is_public === '1',
+      isRequestOnly: data.is_request_only === '1',
+      pendingRequests: JSON.parse(data.pending_requests || '[]')
     };
   }
 
