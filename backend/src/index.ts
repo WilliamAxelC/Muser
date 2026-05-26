@@ -84,7 +84,19 @@ io.on('connection', (socket) => {
   socket.join(roomId);
 
   roomManager.join(roomId, socket.id, userId).then(async (hostId) => {
-    logger.info({ message: '[Diagnostic] User joined room', socket_id: socket.id, room_id: roomId, user_id: userId, host_id: hostId, correlation_id });
+    let currentHostId = hostId;
+    
+    // Self-Healing: Verify host is actually alive upon join
+    const sockets = await io.in(roomId).fetchSockets();
+    const hostAlive = sockets.some(s => s.id === currentHostId);
+    
+    if (!hostAlive && currentHostId !== socket.id) {
+      logger.warn({ message: `[Self-Healing] Phantom host ${currentHostId} detected on join. Forcing migration.` });
+      const migratedHost = await roomManager.leave(roomId, currentHostId);
+      currentHostId = migratedHost || socket.id;
+    }
+
+    logger.info({ message: '[Diagnostic] User joined room', socket_id: socket.id, room_id: roomId, user_id: userId, host_id: currentHostId, correlation_id });
 
     // Initial sync
     const state = await roomManager.getState(roomId);
@@ -103,7 +115,7 @@ io.on('connection', (socket) => {
       });
     }
     
-    io.to(roomId).emit('HOST_CHANGED', { hostId });
+    io.to(roomId).emit('HOST_CHANGED', { hostId: currentHostId });
   }).catch(err => {
     logger.error({ message: '[Diagnostic] Error joining room', error: err, socket_id: socket.id });
     socket.disconnect();
@@ -127,11 +139,27 @@ io.on('connection', (socket) => {
       }
     }
 
-    // Authority Check: Only host can mutate (except ROOM_RESYNC which might be handled differently, but for now strict)
-    const state = await roomManager.getState(mutation.payload.roomId);
+    // Fetch state and perform Self-Healing Host Verification
+    let state = await roomManager.getState(mutation.payload.roomId);
+    if (state && state.hostId) {
+      const sockets = await io.in(mutation.payload.roomId).fetchSockets();
+      const hostAlive = sockets.some(s => s.id === state?.hostId);
+      
+      if (!hostAlive) {
+        logger.warn({ message: `[Self-Healing] Phantom host ${state.hostId} dead during mutation. Forcing migration.` });
+        const newHostId = await roomManager.leave(mutation.payload.roomId, state.hostId);
+        if (newHostId) {
+          io.to(mutation.payload.roomId).emit('HOST_CHANGED', { hostId: newHostId });
+        }
+        // Refresh state after healing
+        state = await roomManager.getState(mutation.payload.roomId);
+      }
+    }
+
+    // Authority Check: Only host can mutate (except ROOM_RESYNC)
     if (!state || state.hostId !== socket.id) {
         if (mutation.payload.type !== 'ROOM_RESYNC') {
-            logger.warn({ message: 'Unauthorized mutation attempt', socket_id: socket.id, host_id: state?.hostId });
+            logger.warn({ message: `[Validation Error] Mutation rejected: Sender ${socket.id} is not the designated room host ${state?.hostId}` });
             return;
         }
     }
@@ -185,6 +213,16 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
+
+// System Cache Cleanup on Boot
+redis.keys('room:*').then(keys => {
+  if (keys.length > 0) {
+    redis.del(...keys).then(() => {
+      logger.info({ message: '[System] Flushed stale room cache on boot', keys_cleared: keys.length });
+    });
+  }
+}).catch(err => logger.error({ message: '[System] Error flushing cache', error: err }));
+
 httpServer.listen(PORT, () => logger.info({ message: `Server listening on port ${PORT}` }));
 
 process.on('SIGTERM', () => {
