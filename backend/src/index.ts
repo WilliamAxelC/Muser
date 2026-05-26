@@ -156,10 +156,15 @@ io.on('connection', (socket) => {
       }
     }
 
-    // Authority Check: Only host can mutate (except ROOM_RESYNC)
-    if (!state || state.hostId !== socket.id) {
-        if (mutation.payload.type !== 'ROOM_RESYNC') {
-            logger.warn({ message: `[Validation Error] Mutation rejected: Sender ${socket.id} is not the designated room host ${state?.hostId}` });
+    // Authority Check: Playback controls require host authority. Anyone can add tracks (ROOM_RESYNC)
+    const hostRequiredActions = ['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'QUEUE_REORDER'];
+    if (hostRequiredActions.includes(mutation.payload.type)) {
+        if (!state || state.hostId !== socket.id) {
+            logger.warn({ 
+                message: `[Validation Error] Mutation rejected: Sender ${socket.id} is not the designated room host ${state?.hostId}`,
+                action: mutation.payload.type
+            });
+            socket.emit('ERROR', { message: `Permission Denied: Only the room host can perform ${mutation.payload.type}` });
             return;
         }
     }

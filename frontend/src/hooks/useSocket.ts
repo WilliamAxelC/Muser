@@ -51,6 +51,12 @@ export function useSocket(roomId: string | null, userId: string) {
       setHostId(data.hostId);
     });
 
+    socket.on('ERROR', (data: any) => {
+      console.error('[Diagnostic] Received ERROR from server:', data.message);
+      // For immediate visibility to the user
+      alert(`MRelay Server Notice:\n${data.message}`);
+    });
+
     return () => {
       console.log('[Diagnostic] Cleaning up socket connection.');
       socket.disconnect();

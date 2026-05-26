@@ -5,7 +5,13 @@ import { Play, Pause, SkipForward, Users, Radio, LogOut, Plus } from 'lucide-rea
 import { YouTubePlayer } from './components/YouTubePlayer';
 
 function App() {
-  const [userId] = useState(() => `user-${Math.random().toString(36).substr(2, 9)}`);
+  const [userId] = useState(() => {
+    const saved = localStorage.getItem('mrelay_user_id');
+    if (saved) return saved;
+    const newId = `user-${Math.random().toString(36).substr(2, 9)}`;
+    localStorage.setItem('mrelay_user_id', newId);
+    return newId;
+  });
   const [inputRoomId, setInputRoomId] = useState('');
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [trackUrl, setTrackUrl] = useState('');
