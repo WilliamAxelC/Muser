@@ -24,6 +24,7 @@ export interface RoomMutation {
     roomId: string;
     type: 'PLAY' | 'PAUSE' | 'SEEK' | 'SKIP' | 'QUEUE_REORDER' | 'ROOM_RESYNC';
     playhead?: number;
+    currentTrackId?: string;
     timestamp: number;
   };
 }
