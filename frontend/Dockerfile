@@ -6,19 +6,23 @@ COPY package*.json ./
 RUN npm install --legacy-peer-deps
 
 COPY . .
-ARG VITE_BACKEND_URL
-ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
+
+# Ensure VITE_BACKEND_URL is empty for production to force relative socket paths
+ENV VITE_BACKEND_URL=""
 
 RUN npm run build
 
-FROM node:20-alpine
+FROM nginx:1.25-alpine
 
-WORKDIR /app
+# Remove default config
+RUN rm /etc/nginx/conf.d/default.conf
 
-RUN npm install -g serve
+# Copy our nginx config
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-COPY --from=builder /app/dist ./dist
+# Copy static assets from builder
+COPY --from=builder /app/dist /usr/share/nginx/html
 
 EXPOSE 8080
 
-CMD ["serve", "-s", "dist", "-l", "8080"]
+CMD ["nginx", "-g", "daemon off;"]

@@ -27,7 +27,7 @@ const io = new Server<
   SocketData
 >(httpServer, {
   cors: { 
-    origin: ["http://localhost:8080", "http://127.0.0.1:8080"],
+    origin: ["http://localhost:8080", "http://127.0.0.1:8080", "https://mrelay.012018.xyz"],
     methods: ["GET", "POST"],
     credentials: true
   },
