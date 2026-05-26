@@ -21,12 +21,18 @@ function App() {
 
   const handleAddTrack = (e: React.FormEvent) => {
     e.preventDefault();
-    // Simple YT ID extractor
-    const match = trackUrl.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/);
-    const videoId = match ? match[1] : trackUrl;
-    if (videoId.length === 11) {
+    console.log('Add Track Attempt:', trackUrl);
+    // Comprehensive YouTube ID extractor
+    const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|music\.youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/;
+    const match = trackUrl.match(regex);
+    const videoId = match ? match[1] : (trackUrl.trim().length === 11 ? trackUrl.trim() : null);
+    
+    console.log('Extracted Video ID:', videoId);
+    if (videoId) {
       emitMutation('ROOM_RESYNC', { currentTrackId: videoId, playhead: 0 });
       setTrackUrl('');
+    } else {
+      console.warn('Invalid YouTube URL or ID');
     }
   };
 

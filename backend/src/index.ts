@@ -26,7 +26,11 @@ const io = new Server<
   InterServerEvents,
   SocketData
 >(httpServer, {
-  cors: { origin: "*" },
+  cors: { 
+    origin: ["http://localhost:8080", "http://127.0.0.1:8080"],
+    methods: ["GET", "POST"],
+    credentials: true
+  },
   maxHttpBufferSize: 4096 // 4KB limit
 });
 
@@ -38,12 +42,12 @@ const rateLimiter = new RateLimiter();
 const RoomMutationSchema = z.object({
   action: z.literal('ROOM_MUTATION'),
   version: z.number(),
-  correlationId: z.string(),
+  correlationId: z.string().max(100),
   payload: z.object({
-    roomId: z.string(),
+    roomId: z.string().min(1).max(50).regex(/^[a-zA-Z0-9_-]+$/),
     type: z.enum(['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'QUEUE_REORDER', 'ROOM_RESYNC']),
-    playhead: z.number().optional(),
-    currentTrackId: z.string().optional(),
+    playhead: z.number().min(0).optional(),
+    currentTrackId: z.string().length(11).regex(/^[a-zA-Z0-9_-]{11}$/).optional(),
     timestamp: z.number()
   })
 });
