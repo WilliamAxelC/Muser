@@ -12,11 +12,21 @@ function App() {
     localStorage.setItem('mrelay_user_id', newId);
     return newId;
   });
+  
+  const [username, setUsername] = useState(() => {
+    return localStorage.getItem('mrelay_username') || `Guest_${userId.substr(5, 4)}`;
+  });
+
   const [inputRoomId, setInputRoomId] = useState('');
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [trackUrl, setTrackUrl] = useState('');
 
-  const { isConnected, roomState, hostId, isHost, emitMutation, socketId } = useSocket(activeRoomId, userId);
+  const { isConnected, roomState, hostId, isHost, emitMutation, socketId } = useSocket(activeRoomId, userId, username);
+
+  const handleNameChange = (newName: string) => {
+    setUsername(newName);
+    localStorage.setItem('mrelay_username', newName);
+  };
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,6 +91,18 @@ function App() {
           </div>
 
           <form onSubmit={handleJoin} className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="username" className="text-sm font-medium text-zinc-400 ml-1">
+                Display Name
+              </label>
+              <input
+                id="username"
+                type="text"
+                value={username}
+                onChange={(e) => handleNameChange(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-lg font-mono focus:outline-none focus:ring-2 focus:ring-zinc-700 transition-all placeholder:text-zinc-700"
+              />
+            </div>
             <div className="space-y-2">
               <label htmlFor="room-id" className="text-sm font-medium text-zinc-400 ml-1">
                 Room ID
@@ -213,8 +235,8 @@ function App() {
             <Radio className="w-3 h-3" />
             Your Identity
           </div>
-          <div className="text-sm font-medium truncate">{userId}</div>
-          <div className="text-[10px] text-zinc-600 font-mono mt-1 truncate">{socketId}</div>
+          <div className="text-sm font-medium truncate">{username}</div>
+          <div className="text-[10px] text-zinc-600 font-mono mt-1 truncate">ID: {userId} | Socket: {socketId || 'offline'}</div>
         </div>
       </footer>
     </div>

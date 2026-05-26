@@ -91,9 +91,10 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
     const delta = Math.abs(localPlayhead - computedTarget);
 
     if (delta > 1.5) {
-      console.log(`[Sync] Drift detected: ${delta.toFixed(2)}s. Seeking to ${computedTarget.toFixed(2)}s`);
+      const safeTarget = Math.max(0, computedTarget);
+      console.log(`[Sync] Drift detected: ${delta.toFixed(2)}s. Seeking to ${safeTarget.toFixed(2)}s`);
       isProcessingRemoteEvent.current = true;
-      playerRef.current.seekTo(computedTarget, true);
+      playerRef.current.seekTo(safeTarget, true);
     }
   }, [isReady, isPlaying, targetPlayhead, updatedAt]);
 

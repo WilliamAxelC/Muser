@@ -8,7 +8,7 @@ interface StateSync {
   updatedAt: number;
 }
 
-export function useSocket(roomId: string | null, userId: string) {
+export function useSocket(roomId: string | null, userId: string, username: string) {
   const [isConnected, setIsConnected] = useState(false);
   const [roomState, setRoomState] = useState<StateSync | null>(null);
   const [hostId, setHostId] = useState<string | null>(null);
@@ -21,7 +21,7 @@ export function useSocket(roomId: string | null, userId: string) {
 
     const socket = io(window.location.origin, {
       path: '/socket.io/',
-      query: { roomId, userId, correlationId: `ui-${userId}` },
+      query: { roomId, userId, username, correlationId: `ui-${userId}` },
       transports: ['websocket', 'polling']
     });
 
