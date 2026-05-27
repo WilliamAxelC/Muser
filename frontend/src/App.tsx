@@ -501,7 +501,7 @@ function App() {
                       <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-bold text-white shrink-0"> {peer.username[0]?.toUpperCase() || '?'} </div>
                       <div className="flex flex-col min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold truncate"> {peer.username} {peer.userId === userId.substring(0,8) && " (You)"} </span>
+                          <span className="text-xs font-bold truncate"> {peer.username} {peer.userId === userId && " (You)"} </span>
                           {peer.isDetached && (
                             <span className="text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider">Detached</span>
                           )}
@@ -510,7 +510,7 @@ function App() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {peer.socketId === hostId ? ( <Crown className="w-3.5 h-3.5 text-yellow-500 fill-current" /> ) : ( isHost && ( <button onClick={() => { if (confirm(`Transfer Master authority to ${peer.username}?`)) { emitMutation('TRANSFER_AUTHORITY', { targetUserId: peer.socketId }); } }} className="p-1.5 hover:bg-white hover:text-black rounded-md transition-all text-zinc-600" title="Make Master" > <Crown className="w-3 h-3" /> </button> ) )}
+                      {peer.userId === roomState?.hostUserId ? ( <Crown className="w-3.5 h-3.5 text-yellow-500 fill-current" /> ) : ( isHost && ( <button onClick={() => { if (confirm(`Transfer Master authority to ${peer.username}?`)) { emitMutation('TRANSFER_AUTHORITY', { targetUserId: peer.socketId }); } }} className="p-1.5 hover:bg-white hover:text-black rounded-md transition-all text-zinc-600" title="Make Master" > <Crown className="w-3 h-3" /> </button> ) )}
                     </div>
                   </div>
                 ))}

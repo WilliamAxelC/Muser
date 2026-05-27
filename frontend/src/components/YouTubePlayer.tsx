@@ -190,7 +190,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
            <img 
              src={`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`} 
              alt="Thumbnail" 
-             className="w-full h-full object-cover opacity-30 grayscale blur-sm"
+             className="absolute inset-0 z-10 w-full h-full object-cover opacity-30 grayscale blur-sm"
            />
            <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 space-y-4">
               <div className="px-4 py-2 bg-blue-600/20 border border-blue-500/50 rounded-full text-[10px] font-black uppercase tracking-widest text-blue-400">
@@ -204,7 +204,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
         ref={containerRef} 
         className={cn(
           "w-full h-full transition-opacity duration-500",
-          dataSaver ? "absolute -left-[9999px] w-[640px] h-[360px] opacity-0" : "opacity-100"
+          dataSaver ? "z-0 opacity-1" : "opacity-100"
         )} 
       />
     </div>
