@@ -23,8 +23,11 @@ docker-compose.override.yml
 .DS_Store
 Thumbs.db
 
+# Local Workspace
+handoff.md
+handoff.md
+
 ExecutionRules.md
 changelog.md
-handoff.md
 .progress.md
 sd
