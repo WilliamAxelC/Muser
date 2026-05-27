@@ -34,12 +34,17 @@ interface StateSync {
   peers?: { socketId: string; userId: string; username: string }[];
 }
 
-export function useSocket(roomId: string | null, userId: string, username: string, password?: string, title?: string) {
+export function useSocket(roomId: string | null, userId: string, username: string, password?: string, title?: string, isUnsynced: boolean = false) {
   const [isConnected, setIsConnected] = useState(false);
   const [roomState, setRoomState] = useState<StateSync | null>(null);
   const [hostId, setHostId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const socketRef = useRef<Socket | null>(null);
+  const isUnsyncedRef = useRef(isUnsynced);
+
+  useEffect(() => {
+    isUnsyncedRef.current = isUnsynced;
+  }, [isUnsynced]);
 
   useEffect(() => {
     if (!roomId) return;
@@ -70,6 +75,10 @@ export function useSocket(roomId: string | null, userId: string, username: strin
 
     socket.on('STATE_SYNC', (data: any) => {
       console.log('[Diagnostic] Received STATE_SYNC:', data);
+      if (isUnsyncedRef.current) {
+        console.log('[Diagnostic] Blocked STATE_SYNC due to detached mode');
+        return;
+      }
       setRoomState(data.payload);
     });
 

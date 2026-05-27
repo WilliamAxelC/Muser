@@ -208,4 +208,25 @@ export class RoomManager {
     const metaKey = `room:${roomId}:meta`;
     await this.redis.hset(metaKey, 'host_uid', socketId);
   }
+
+  async updateSocketId(roomId: string, oldSocketId: string, newSocketId: string) {
+    const metaKey = `room:${roomId}:meta`;
+    const joinOrderKey = `room:${roomId}:join_order`;
+    const ttl = 12 * 60 * 60;
+
+    // Check if the old socket is in the join order
+    const score = await this.redis.zscore(joinOrderKey, oldSocketId);
+    if (score !== null) {
+      await this.redis.zrem(joinOrderKey, oldSocketId);
+      await this.redis.zadd(joinOrderKey, score, newSocketId);
+      await this.redis.expire(joinOrderKey, ttl);
+    }
+
+    // Check if it was the host
+    const hostUid = await this.redis.hget(metaKey, 'host_uid');
+    if (hostUid === oldSocketId) {
+      await this.redis.hset(metaKey, 'host_uid', newSocketId);
+      await this.redis.expire(metaKey, ttl);
+    }
+  }
 }
