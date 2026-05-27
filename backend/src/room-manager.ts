@@ -12,7 +12,7 @@ export class RoomManager {
   private defineScripts() {
     // Lua script to join a room and return the current host
     // Keys: [meta_key, join_order_key]
-    // Args: [socket_id, user_id, timestamp, ttl]
+    // Args: [socket_id, user_id, timestamp, ttl, password]
     this.redis.defineCommand('joinRoom', {
       numberOfKeys: 2,
       lua: `
@@ -22,6 +22,13 @@ export class RoomManager {
         local user_id = ARGV[2]
         local timestamp = ARGV[3]
         local ttl = ARGV[4]
+        local password = ARGV[5]
+
+        -- Check password if room exists
+        local existing_password = redis.call('HGET', meta_key, 'password')
+        if existing_password and existing_password ~= '' and existing_password ~= password then
+          return 'ERR_INVALID_PASSWORD'
+        end
 
         -- Add user to join order
         redis.call('ZADD', join_order_key, timestamp, socket_id)
@@ -36,6 +43,9 @@ export class RoomManager {
           redis.call('HSET', meta_key, 'last_playhead', '0')
           redis.call('HSET', meta_key, 'updated_at', timestamp)
           redis.call('HSET', meta_key, 'queue', '[]')
+          if password and password ~= '' then
+            redis.call('HSET', meta_key, 'password', password)
+          end
           host_uid = socket_id
         end
         redis.call('EXPIRE', meta_key, ttl)
@@ -85,14 +95,18 @@ export class RoomManager {
     });
   }
 
-  async join(roomId: string, socketId: string, userId: string): Promise<string> {
+  async join(roomId: string, socketId: string, userId: string, password?: string): Promise<string> {
     const metaKey = `room:${roomId}:meta`;
     const joinOrderKey = `room:${roomId}:join_order`;
     const ttl = 12 * 60 * 60; // 12 hours
     const timestamp = Date.now();
 
     // @ts-ignore - custom command
-    return await this.redis.joinRoom(metaKey, joinOrderKey, socketId, userId, timestamp, ttl);
+    const result = await this.redis.joinRoom(metaKey, joinOrderKey, socketId, userId, timestamp, ttl, password || '');
+    if (result === 'ERR_INVALID_PASSWORD') {
+      throw new Error('INVALID_PASSWORD');
+    }
+    return result;
   }
 
   async leave(roomId: string, socketId: string): Promise<string> {

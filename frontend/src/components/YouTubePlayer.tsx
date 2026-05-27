@@ -18,6 +18,9 @@ interface YouTubePlayerProps {
   isHost: boolean;
   onStateChange: (state: { isPlaying: boolean; playhead: number }) => void;
   updatedAt: number;
+  volume?: number;
+  dataSaver?: boolean;
+  muted?: boolean;
 }
 
 export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
@@ -26,7 +29,10 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
   targetPlayhead,
   isHost,
   onStateChange,
-  updatedAt
+  updatedAt,
+  volume = 50,
+  dataSaver = false,
+  muted = false
 }, ref) => {
   const playerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -69,19 +75,37 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
           controls: 1,
           modestbranding: 1,
           rel: 0,
+          mute: muted ? 1 : 0
         },
         events: {
-          onReady: () => setIsReady(true),
+          onReady: () => {
+            setIsReady(true);
+            playerRef.current.setVolume(volume);
+          },
           onStateChange: handlePlayerStateChange,
         },
       });
     }
 
     return () => {
-      // Cleanup not strictly necessary for YT API usually, 
-      // but good to null out refs
+      if (playerRef.current) {
+        playerRef.current.destroy();
+        playerRef.current = null;
+      }
     };
   }, []);
+
+  // Handle Volume Changes
+  useEffect(() => {
+    if (isReady && playerRef.current) {
+      if (muted) {
+        playerRef.current.mute();
+      } else {
+        playerRef.current.unMute();
+        playerRef.current.setVolume(volume);
+      }
+    }
+  }, [isReady, volume, muted]);
 
   // Handle Playback State Sync
   useEffect(() => {
@@ -136,7 +160,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
   };
 
   return (
-    <div className="w-full h-full rounded-2xl overflow-hidden bg-black">
+    <div className={`w-full h-full rounded-2xl overflow-hidden bg-black transition-opacity duration-300 ${dataSaver ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
       <div ref={containerRef} />
     </div>
   );

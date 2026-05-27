@@ -20,7 +20,7 @@ interface StateSync {
   pendingRequests?: { id: string; trackId: string; username: string }[];
 }
 
-export function useSocket(roomId: string | null, userId: string, username: string) {
+export function useSocket(roomId: string | null, userId: string, username: string, password?: string) {
   const [isConnected, setIsConnected] = useState(false);
   const [roomState, setRoomState] = useState<StateSync | null>(null);
   const [hostId, setHostId] = useState<string | null>(null);
@@ -34,7 +34,7 @@ export function useSocket(roomId: string | null, userId: string, username: strin
 
     const socket = io(window.location.origin, {
       path: '/socket.io/',
-      query: { roomId, userId, username, correlationId: `ui-${userId}` },
+      query: { roomId, userId, username, password, correlationId: `ui-${userId}` },
       transports: ['websocket', 'polling']
     });
 
