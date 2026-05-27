@@ -33,13 +33,18 @@ export interface QueueItem {
   title: string;
 }
 
+export interface HistoryItem extends QueueItem {
+  status: 'played' | 'skipped';
+  timestamp: number;
+}
+
 export interface RoomMutation {
   action: 'ROOM_MUTATION';
   version: number;
   correlationId: string;
   payload: {
     roomId: string;
-    type: 'PLAY' | 'PAUSE' | 'SEEK' | 'SKIP' | 'BACK' | 'QUEUE_REORDER' | 'ROOM_RESYNC' | 'QUEUE_ADD' | 'QUEUE_REMOVE' | 'QUEUE_CLEAR' | 'QUEUE_BATCH_APPEND' | 'SET_PUBLIC' | 'SET_REQUEST_ONLY' | 'APPROVE_REQUEST' | 'DENY_REQUEST' | 'UPDATE_IDENTITY' | 'TRANSFER_AUTHORITY' | 'QUEUE_PLAYLIST_REQUEST' | 'SET_TITLE';
+    type: 'PLAY' | 'PAUSE' | 'SEEK' | 'SKIP' | 'BACK' | 'QUEUE_REORDER' | 'QUEUE_JUMP' | 'ROOM_RESYNC' | 'QUEUE_ADD' | 'QUEUE_REMOVE' | 'QUEUE_CLEAR' | 'QUEUE_BATCH_APPEND' | 'SET_PUBLIC' | 'SET_REQUEST_ONLY' | 'APPROVE_REQUEST' | 'DENY_REQUEST' | 'UPDATE_IDENTITY' | 'TRANSFER_AUTHORITY' | 'QUEUE_PLAYLIST_REQUEST' | 'SET_TITLE';
     playhead?: number;
     currentTrackId?: string;
     timestamp: number;
@@ -69,7 +74,7 @@ export interface StateSync {
     currentTrackId: string;
     updatedAt: number;
     queue: QueueItem[];
-    history: QueueItem[];
+    history: HistoryItem[];
     isPublic?: boolean;
     isRequestOnly?: boolean;
     pendingRequests?: { id: string; trackId: string; title: string; username: string }[];

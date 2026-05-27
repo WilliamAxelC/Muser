@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
+import { cn } from '../lib/utils';
 
 declare global {
   interface Window {
@@ -50,10 +51,8 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
     }
   }));
 
-  // Load YouTube API - Only if NOT in data saver mode
+  // Load YouTube API
   useEffect(() => {
-    if (dataSaver) return;
-
     if (!window.YT) {
       const tag = document.createElement('script');
       tag.src = "https://www.youtube.com/iframe_api";
@@ -98,7 +97,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
         setIsReady(false);
       }
     };
-  }, [dataSaver, videoId]);
+  }, [videoId]); // Re-init only on videoId change, NOT dataSaver
 
   // Handle Volume Changes
   useEffect(() => {
@@ -168,8 +167,8 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
 
   return (
     <div className="w-full h-full rounded-2xl overflow-hidden bg-black relative">
-      {dataSaver ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950">
+      {dataSaver && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-zinc-950">
            <img 
              src={`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`} 
              alt="Thumbnail" 
@@ -182,9 +181,15 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
               <h4 className="text-zinc-500 text-xs font-bold max-w-xs truncate">Audio Rendering Active</h4>
            </div>
         </div>
-      ) : (
-        <div ref={containerRef} className="w-full h-full" />
       )}
+      <div 
+        ref={containerRef} 
+        className={cn(
+          "w-full h-full transition-opacity duration-500",
+          dataSaver ? "absolute -left-[9999px] w-1 h-1 opacity-0" : "opacity-100"
+        )} 
+      />
     </div>
   );
 });
+

@@ -128,7 +128,7 @@ export class RoomManager {
     currentTrackId: string,
     title?: string,
     queue?: { videoId: string; title: string }[],
-    history?: { videoId: string; title: string }[],
+    history?: { videoId: string; title: string; status: 'played' | 'skipped'; timestamp: number }[],
     isPublic?: boolean,
     isRequestOnly?: boolean,
     pendingRequests?: { id: string; trackId: string; title: string; username: string }[]
@@ -176,7 +176,7 @@ export class RoomManager {
       title: data.title || roomId,
       updatedAt: parseInt(data.updated_at || '0'),
       queue: JSON.parse(data.queue || '[]') as { videoId: string; title: string }[],
-      history: JSON.parse(data.history || '[]') as { videoId: string; title: string }[],
+      history: JSON.parse(data.history || '[]') as { videoId: string; title: string; status: 'played' | 'skipped'; timestamp: number }[],
       isPublic: data.is_public === '1',
       isRequestOnly: data.is_request_only === '1',
       pendingRequests: JSON.parse(data.pending_requests || '[]') as { id: string; trackId: string; title: string; username: string }[]

@@ -45,7 +45,7 @@ const RoomMutationSchema = z.object({
   correlationId: z.string().max(100),
   payload: z.object({
     roomId: z.string().min(1).max(50).regex(/^[a-zA-Z0-9_-]+$/),
-    type: z.enum(['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'BACK', 'QUEUE_REORDER', 'ROOM_RESYNC', 'QUEUE_ADD', 'QUEUE_REMOVE', 'QUEUE_CLEAR', 'QUEUE_BATCH_APPEND', 'SET_PUBLIC', 'SET_REQUEST_ONLY', 'APPROVE_REQUEST', 'DENY_REQUEST', 'UPDATE_IDENTITY', 'TRANSFER_AUTHORITY', 'QUEUE_PLAYLIST_REQUEST', 'SET_TITLE']),
+    type: z.enum(['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'BACK', 'QUEUE_REORDER', 'QUEUE_JUMP', 'ROOM_RESYNC', 'QUEUE_ADD', 'QUEUE_REMOVE', 'QUEUE_CLEAR', 'QUEUE_BATCH_APPEND', 'SET_PUBLIC', 'SET_REQUEST_ONLY', 'APPROVE_REQUEST', 'DENY_REQUEST', 'UPDATE_IDENTITY', 'TRANSFER_AUTHORITY', 'QUEUE_PLAYLIST_REQUEST', 'SET_TITLE']),
     playhead: z.number().min(0).optional(),
     currentTrackId: z.string().length(11).regex(/^[a-zA-Z0-9_-]{11}$/).optional().or(z.literal('')),
     timestamp: z.number(),
@@ -316,7 +316,7 @@ io.on('connection', async (socket) => {
     }
 
     // Authority Check: Playback controls require host authority. Anyone can add tracks (ROOM_RESYNC)
-    const hostRequiredActions = ['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'QUEUE_REORDER'];
+    const hostRequiredActions = ['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'BACK', 'QUEUE_REORDER', 'QUEUE_JUMP'];
     if (hostRequiredActions.includes(mutation.payload.type)) {
         if (!state || state.hostId !== socket.id) {
             logger.warn({ 
@@ -356,15 +356,15 @@ io.on('connection', async (socket) => {
 
     if (mutation.payload.type === 'QUEUE_ADD' && mutation.payload.item) {
         const videoId = mutation.payload.item;
-        const title = await resolveVideoTitle(videoId);
-        const item = { videoId, title };
+        const videoTitle = await resolveVideoTitle(videoId);
+        const item = { videoId, title: videoTitle };
 
         if (isRequestOnly && socket.id !== state?.hostId) {
             // Route to pending requests
             pendingRequests.push({
                 id: `req-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
                 trackId: videoId,
-                title,
+                title: videoTitle,
                 username: socket.data.username
             });
             // Emit a notification back to the sender
@@ -404,6 +404,12 @@ io.on('connection', async (socket) => {
     }
     if (mutation.payload.type === 'QUEUE_CLEAR') {
         queue = [];
+    }
+    if (mutation.payload.type === 'QUEUE_REORDER' && mutation.payload.index !== undefined && mutation.payload.newIndex !== undefined) {
+        const item = queue.splice(mutation.payload.index, 1)[0];
+        if (item) {
+            queue.splice(mutation.payload.newIndex, 0, item);
+        }
     }
     if (mutation.payload.type === 'QUEUE_BATCH_APPEND' && mutation.payload.items) {
         const normalized: { videoId: string; title: string }[] = (mutation.payload.items as any[]).map(i => {
@@ -447,8 +453,16 @@ io.on('connection', async (socket) => {
 
     if (mutation.payload.type === 'SKIP') {
         if (currentTrackId) {
-            history.push({ videoId: currentTrackId, title: 'Previous Track' });
-            if (history.length > 50) history.shift();
+            // Find current title if possible, or use a placeholder
+            // Note: current title isn't easily accessible without more tracking, 
+            // but we can try to resolve it or just use "Played Track"
+            history.push({ 
+                videoId: currentTrackId, 
+                title: 'Played Track', 
+                status: 'played', 
+                timestamp: Date.now() 
+            });
+            if (history.length > 20) history = history.slice(-20);
         }
         if (queue.length > 0) {
             const next = queue.shift();
@@ -462,10 +476,34 @@ io.on('connection', async (socket) => {
         }
     }
 
+    if (mutation.payload.type === 'QUEUE_JUMP' && mutation.payload.index !== undefined) {
+        if (currentTrackId) {
+            history.push({ 
+                videoId: currentTrackId, 
+                title: 'Skipped Track', 
+                status: 'skipped', 
+                timestamp: Date.now() 
+            });
+        }
+        
+        const preceding = queue.splice(0, mutation.payload.index + 1);
+        const target = preceding.pop();
+        
+        preceding.forEach(item => {
+            history.push({ videoId: item.videoId, title: item.title, status: 'skipped', timestamp: Date.now() });
+        });
+
+        currentTrackId = target?.videoId || '';
+        currentPlayhead = 0;
+        isPlaying = true;
+        
+        if (history.length > 20) history = history.slice(-20);
+    }
+
     if (mutation.payload.type === 'BACK') {
         if (history.length > 0) {
             if (currentTrackId) {
-                queue.unshift({ videoId: currentTrackId, title: 'Pushed back from history' });
+                queue.unshift({ videoId: currentTrackId, title: 'Returned to Queue' });
             }
             const prev = history.pop();
             currentTrackId = prev?.videoId || '';

@@ -156,7 +156,7 @@ function App() {
   if (!activeRoomId) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4 md:p-8 bg-black overflow-y-auto">
-        <div className="w-full max-w-lg space-y-12 py-12">
+        <div className="max-w-6xl w-full mx-auto px-4 py-12 space-y-12">
           <div className="text-center space-y-4">
              <div className="inline-flex items-center justify-center w-20 h-20 rounded-[2rem] bg-zinc-900 border border-zinc-800 shadow-2xl">
                 <Radio className="w-10 h-10 text-blue-500 animate-pulse" />
@@ -165,81 +165,87 @@ function App() {
              <p className="text-zinc-500 font-medium tracking-tight">Collaborative Sync-Stream Protocol</p>
           </div>
 
-          <div className="space-y-6">
-            {/* Card A: User Identity */}
-            <div className="bg-zinc-900/30 border border-zinc-800/80 p-8 rounded-3xl shadow-2xl backdrop-blur-md space-y-6">
-               <div className="flex items-center gap-3">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            {/* Column Box A (lg:col-span-4): Global Identity Profile card */}
+            <div className="lg:col-span-4 space-y-6">
+              <div className="bg-zinc-900/30 border border-zinc-800/80 p-8 rounded-3xl shadow-2xl backdrop-blur-md space-y-6 h-full">
+                <div className="flex items-center gap-3">
                   <Users className="w-4 h-4 text-blue-500" />
                   <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">Global Identity</h3>
-               </div>
-               <div className="space-y-2">
+                </div>
+                <div className="space-y-2">
                   <label htmlFor="username" className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest ml-1">Handle</label>
                   <input id="username" type="text" value={username} onChange={(e) => handleNameChange(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800/50 rounded-2xl px-6 py-4 text-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-900/50 transition-all placeholder:text-zinc-800 text-white" />
-               </div>
+                </div>
+                <p className="text-[10px] text-zinc-600 font-medium leading-relaxed">Your identity is persisted locally and broadcast to all connected peer nodes in real-time.</p>
+              </div>
             </div>
 
-            {/* Card B: Provisioning Matrix (Create) */}
-            <div className="bg-zinc-900/30 border border-zinc-800/80 p-8 rounded-3xl shadow-2xl backdrop-blur-md space-y-8">
-               <div className="flex items-center gap-3">
-                  <Globe className="w-4 h-4 text-emerald-500" />
-                  <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">Room Provisioning</h3>
-               </div>
-               
-               <div className="space-y-6">
-                  <div className="space-y-2">
-                    <label htmlFor="room-title" className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest ml-1">Room Title</label>
-                    <input id="room-title" type="text" placeholder="THE SYNC MATRIX" value={roomTitleInput} onChange={(e) => setRoomTitleInput(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800/50 rounded-2xl px-6 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-900/50 transition-all placeholder:text-zinc-800 text-white" />
+            {/* Column Box B (lg:col-span-8): Create New Room and Join cards */}
+            <div className="lg:col-span-8 space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Card B: Provisioning Matrix (Create) */}
+                <div className="bg-zinc-900/30 border border-zinc-800/80 p-8 rounded-3xl shadow-2xl backdrop-blur-md space-y-8 flex flex-col">
+                  <div className="flex items-center gap-3">
+                    <Globe className="w-4 h-4 text-emerald-500" />
+                    <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">Room Provisioning</h3>
                   </div>
-
-                  <div className="flex items-center justify-between bg-zinc-950/50 p-4 rounded-2xl border border-zinc-800/50">
-                    <div>
-                      <div className="text-sm font-bold text-white">Public Discovery</div>
-                      <div className="text-[9px] text-zinc-600 uppercase tracking-tighter">Visible to global peer-list</div>
+                  
+                  <div className="space-y-6 flex-1">
+                    <div className="space-y-2">
+                      <label htmlFor="room-title" className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest ml-1">Room Title</label>
+                      <input id="room-title" type="text" placeholder="THE SYNC MATRIX" value={roomTitleInput} onChange={(e) => setRoomTitleInput(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800/50 rounded-2xl px-6 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-900/50 transition-all placeholder:text-zinc-800 text-white" />
                     </div>
-                    <button onClick={() => setIsCreatingPublic(!isCreatingPublic)} className={cn("w-12 h-6 rounded-full transition-all relative", isCreatingPublic ? "bg-blue-600" : "bg-zinc-800")}>
-                      <div className={cn("w-4 h-4 bg-white rounded-full absolute top-1 transition-all", isCreatingPublic ? "right-1" : "left-1")} />
-                    </button>
+
+                    <div className="flex items-center justify-between bg-zinc-950/50 p-4 rounded-2xl border border-zinc-800/50">
+                      <div>
+                        <div className="text-sm font-bold text-white">Public Discovery</div>
+                        <div className="text-[9px] text-zinc-600 uppercase tracking-tighter">Visible to global peer-list</div>
+                      </div>
+                      <button onClick={() => setIsCreatingPublic(!isCreatingPublic)} className={cn("w-12 h-6 rounded-full transition-all relative", isCreatingPublic ? "bg-blue-600" : "bg-zinc-800")}>
+                        <div className={cn("w-4 h-4 bg-white rounded-full absolute top-1 transition-all", isCreatingPublic ? "right-1" : "left-1")} />
+                      </button>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label htmlFor="create-password" className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest ml-1">Access Token (Optional)</label>
+                      <input id="create-password" type="password" placeholder="••••••••" value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800/50 rounded-2xl px-6 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-900/50 transition-all placeholder:text-zinc-800 text-white" />
+                    </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <label htmlFor="create-password" className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest ml-1">Access Token (Optional)</label>
-                    <input id="create-password" type="password" placeholder="••••••••" value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800/50 rounded-2xl px-6 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-900/50 transition-all placeholder:text-zinc-800 text-white" />
+                  <button onClick={handleCreateRoom} className="w-full bg-white text-black font-black py-5 rounded-[1.5rem] hover:bg-zinc-200 active:scale-[0.98] transition-all shadow-xl uppercase tracking-widest text-xs mt-6">Initialize Node</button>
+                </div>
+
+                {/* Card C: Port Ingress (Join) */}
+                <div className="bg-zinc-900/30 border border-zinc-800/80 p-8 rounded-3xl shadow-2xl backdrop-blur-md space-y-8 flex flex-col">
+                  <div className="flex items-center gap-3">
+                    <Link2 className="w-4 h-4 text-blue-500" />
+                    <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">Inbound Ingress</h3>
                   </div>
-               </div>
 
-               <button onClick={handleCreateRoom} className="w-full bg-white text-black font-black py-5 rounded-[1.5rem] hover:bg-zinc-200 active:scale-[0.98] transition-all shadow-xl uppercase tracking-widest text-xs">Initialize Node</button>
-            </div>
-
-            {/* Card C: Port Ingress (Join) */}
-            <div className="bg-zinc-900/30 border border-zinc-800/80 p-8 rounded-3xl shadow-2xl backdrop-blur-md space-y-8">
-               <div className="flex items-center gap-3">
-                  <Link2 className="w-4 h-4 text-blue-500" />
-                  <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">Inbound Ingress</h3>
-               </div>
-
-               <form onSubmit={handleJoin} className="space-y-6">
-                <div className="flex gap-2">
-                    <div className="flex-1 space-y-2">
+                  <form onSubmit={handleJoin} className="space-y-6 flex-1 flex flex-col">
+                    <div className="space-y-2">
                        <label htmlFor="room-id" className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest ml-1">Room Index</label>
                        <input id="room-id" type="text" placeholder="CODE" value={inputRoomId} onChange={(e) => setInputRoomId(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800/50 rounded-2xl px-6 py-4 font-mono tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-blue-900/50 transition-all placeholder:text-zinc-800 uppercase text-white" />
                     </div>
-                    <div className="flex flex-col justify-end">
-                       <button type="submit" className="bg-blue-600 text-white font-black px-8 h-[60px] rounded-2xl hover:bg-blue-500 active:scale-[0.98] transition-all shadow-lg uppercase text-xs">Join</button>
+                    
+                    <div className="space-y-2 flex-1">
+                       <label className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest ml-1">Validation Token</label>
+                       <input type="password" placeholder="••••••••" value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800/50 rounded-2xl px-6 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-900/50 transition-all placeholder:text-zinc-800 text-white" />
                     </div>
+                    
+                    <button type="submit" className="w-full bg-blue-600 text-white font-black py-5 rounded-[1.5rem] hover:bg-blue-500 active:scale-[0.98] transition-all shadow-xl uppercase tracking-widest text-xs mt-6">Secure Access</button>
+                  </form>
                 </div>
-                <div className="space-y-2">
-                   <label className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest ml-1">Validation Token</label>
-                   <input type="password" placeholder="••••••••" value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800/50 rounded-2xl px-6 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-900/50 transition-all placeholder:text-zinc-800 text-white" />
-                </div>
-              </form>
+              </div>
             </div>
           </div>
           
           <div className="space-y-6 pt-8 border-t border-zinc-900">
             <h3 className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.3em] text-center">Distributed Registry</h3>
-            <div className="grid grid-cols-1 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                {publicRooms.length === 0 ? ( 
-                 <div className="text-zinc-800 text-[10px] font-black uppercase text-center py-8 tracking-widest bg-zinc-900/10 rounded-3xl border border-dashed border-zinc-900">No active public nodes</div> 
+                 <div className="md:col-span-2 lg:col-span-3 text-zinc-800 text-[10px] font-black uppercase text-center py-12 tracking-widest bg-zinc-900/10 rounded-3xl border border-dashed border-zinc-900">No active public nodes</div> 
                ) : ( 
                  publicRooms.map((room) => ( 
                    <div key={room.roomId} className="flex items-center justify-between p-5 bg-zinc-950/40 rounded-2xl border border-zinc-900 hover:border-zinc-800 transition-all group"> 
@@ -332,15 +338,15 @@ function App() {
 
               <div className="w-full max-w-md flex flex-wrap items-center justify-center gap-4 md:gap-6 px-4 md:px-6 py-4 bg-zinc-900/50 rounded-3xl border border-zinc-800/50 backdrop-blur-md">
                  <div className="flex-1 min-w-[140px] flex items-center gap-4">
-                   <div className="p-2 rounded-lg bg-zinc-800/50"> <VolumeX className="w-4 h-4 text-zinc-400" /> </div>
+                   <div className="p-2 rounded-lg bg-zinc-800/50 flex-shrink-0"> <VolumeX className="w-4 h-4 text-zinc-400" /> </div>
                    <input type="range" min="0" max="100" value={volume} onChange={(e) => setVolume(parseInt(e.target.value))} className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-white" />
-                   <span className="text-[10px] font-mono font-bold text-zinc-400 w-6">{volume}</span>
+                   <span className="text-[10px] font-mono font-bold text-zinc-400 w-8 flex-shrink-0 text-right">{volume}</span>
                  </div>
                  
-                 <div className="hidden md:block w-px h-6 bg-zinc-800" />
+                 <div className="hidden md:block w-px h-6 bg-zinc-800 flex-shrink-0" />
                  
-                 <div className="flex items-center gap-4">
-                    <button onClick={() => setIsUnsynced(!isUnsynced)} className={cn("flex items-center gap-2 px-3 py-2 rounded-xl border transition-all", isUnsynced ? "bg-orange-500/10 border-orange-500/50 text-orange-400" : "bg-zinc-800/50 border-zinc-700/50 text-zinc-500")} title="Bypass Master Sync">
+                 <div className="flex items-center gap-3 flex-shrink-0">
+                    <button onClick={() => setIsUnsynced(!isUnsynced)} className={cn("flex items-center gap-2 px-3 py-2 rounded-xl border transition-all flex-shrink-0", isUnsynced ? "bg-orange-500/10 border-orange-500/50 text-orange-400" : "bg-zinc-800/50 border-zinc-700/50 text-zinc-500")} title="Bypass Master Sync">
                        <ShieldCheck className={cn("w-3.5 h-3.5", isUnsynced ? "text-orange-400" : "text-zinc-600")} />
                        <span className="text-[9px] font-black uppercase tracking-widest">{isUnsynced ? 'Detached' : 'Synced'}</span>
                     </button>
@@ -366,7 +372,7 @@ function App() {
             <button onClick={() => setMobileTab('queue')} className={cn( "flex-1 py-4 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] transition-all", mobileTab === 'queue' ? "text-white border-b-2 border-white" : "text-zinc-600 hover:text-zinc-400" )}> <ListMusic className="w-3 h-3" /> Media Queue {roomState?.queue && roomState.queue.length > 0 && ( <span className="bg-blue-600 text-[8px] px-1.5 py-0.5 rounded-full ml-1">{roomState.queue.length}</span> )} </button>
           </div>
           <div className="flex-1 min-h-0">
-            {mobileTab === 'chat' ? ( <ChatView messages={messages} onSendMessage={sendMessage} currentUserId={userId} /> ) : ( <QueueView queue={roomState?.queue || []} isHost={isHost} onReorder={(oldIndex, newIndex) => emitMutation('QUEUE_REORDER', { index: oldIndex, newIndex })} onRemove={(index) => emitMutation('QUEUE_REMOVE', { index })} isRequestOnly={roomState?.isRequestOnly} onToggleRequestOnly={(val) => emitMutation('SET_REQUEST_ONLY', { isRequestOnly: val })} pendingRequests={roomState?.pendingRequests} onApprove={(id) => emitMutation('APPROVE_REQUEST', { requestId: id })} onDeny={(id) => emitMutation('DENY_REQUEST', { requestId: id })} /> )}
+            {mobileTab === 'chat' ? ( <ChatView messages={messages} onSendMessage={sendMessage} currentUserId={userId} /> ) : ( <QueueView queue={roomState?.queue || []} history={roomState?.history || []} isHost={isHost} onReorder={(oldIndex, newIndex) => emitMutation('QUEUE_REORDER', { index: oldIndex, newIndex })} onRemove={(index) => emitMutation('QUEUE_REMOVE', { index })} onJump={(index) => emitMutation('QUEUE_JUMP', { index })} isRequestOnly={roomState?.isRequestOnly} onToggleRequestOnly={(val) => emitMutation('SET_REQUEST_ONLY', { isRequestOnly: val })} pendingRequests={roomState?.pendingRequests} onApprove={(id) => emitMutation('APPROVE_REQUEST', { requestId: id })} onDeny={(id) => emitMutation('DENY_REQUEST', { requestId: id })} /> )}
           </div>
         </aside>
 

@@ -14,6 +14,11 @@ export interface QueueItem {
   title: string;
 }
 
+export interface HistoryItem extends QueueItem {
+  status: 'played' | 'skipped';
+  timestamp: number;
+}
+
 interface StateSync {
   roomId: string;
   title: string;
@@ -22,7 +27,7 @@ interface StateSync {
   currentTrackId: string;
   updatedAt: number;
   queue: QueueItem[];
-  history: QueueItem[];
+  history: HistoryItem[];
   isPublic?: boolean;
   isRequestOnly?: boolean;
   pendingRequests?: { id: string; trackId: string; title: string; username: string }[];
