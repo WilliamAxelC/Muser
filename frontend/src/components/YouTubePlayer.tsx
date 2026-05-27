@@ -43,7 +43,6 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
   const playerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isReady, setIsReady] = useState(false);
-  const isAutomatedChange = useRef(false);
 
   useImperativeHandle(ref, () => ({
     getCurrentTime: () => {
@@ -129,6 +128,12 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
     }
   }, [isReady, volume, muted]);
 
+  const propsRef = useRef({ isPlaying, isHost, onStateChange, targetPlayhead });
+  
+  useEffect(() => {
+    propsRef.current = { isPlaying, isHost, onStateChange, targetPlayhead };
+  }, [isPlaying, isHost, onStateChange, targetPlayhead]);
+
   // Handle Playback State Sync
   useEffect(() => {
     if (!isReady || !playerRef.current || isUnsynced) return;
@@ -136,10 +141,8 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
     // Apply Play/Pause
     const currentPlayerState = playerRef.current.getPlayerState();
     if (isPlaying && currentPlayerState !== 1) { // 1 = playing
-      isAutomatedChange.current = true;
       playerRef.current.playVideo();
     } else if (!isPlaying && currentPlayerState === 1) {
-      isAutomatedChange.current = true;
       playerRef.current.pauseVideo();
     }
 
@@ -152,34 +155,40 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
     if (Math.abs(drift) > 2.0 && !isNaN(computedTarget)) {
       const safeTarget = Math.max(0, computedTarget);
       console.log(`[Sync] Real state change or significant drift detected. Seeking to ${safeTarget.toFixed(2)}s`);
-      isAutomatedChange.current = true;
       playerRef.current.seekTo(safeTarget, true);
     }
   }, [isReady, isPlaying, targetPlayhead, videoId, isUnsynced]); 
 
   const handlePlayerStateChange = (event: any) => {
-    if (isAutomatedChange.current) {
-      isAutomatedChange.current = false;
-      return;
-    }
-
     const newState = event.data;
+    const { isPlaying: currentIsPlaying, isHost: currentIsHost, onStateChange: currentOnStateChange, targetPlayhead: currentTargetPlayhead } = propsRef.current;
 
     // Auto-advance logic for host
-    if (newState === window.YT.PlayerState.ENDED && isHost) {
-      onStateChange({ isPlaying: false, playhead: 0, isEnded: true });
+    if (newState === window.YT.PlayerState.ENDED && currentIsHost) {
+      currentOnStateChange({ isPlaying: false, playhead: 0, isEnded: true });
       return;
     }
 
     // Only host propagates state changes
-    if (!isHost) return;
+    if (!currentIsHost) return;
 
     const playhead = playerRef.current.getCurrentTime();
 
+    // To prevent infinite loops and race conditions, we only emit a mutation if:
+    // 1. The local state transition differs from the server's known state (e.g. playing when server thinks paused)
+    // 2. OR, if it's a significant playhead seek that wasn't just a drift correction.
+    
+    // We assume if playhead is very close to currentTargetPlayhead, it's just a sync correction, not a manual user seek.
+    const isManualSeek = Math.abs(playhead - currentTargetPlayhead) > 3.0;
+
     if (newState === window.YT.PlayerState.PLAYING) {
-      onStateChange({ isPlaying: true, playhead });
+      if (!currentIsPlaying || isManualSeek) {
+        currentOnStateChange({ isPlaying: true, playhead });
+      }
     } else if (newState === window.YT.PlayerState.PAUSED) {
-      onStateChange({ isPlaying: false, playhead });
+      if (currentIsPlaying || isManualSeek) {
+        currentOnStateChange({ isPlaying: false, playhead });
+      }
     }
   };
 
@@ -201,13 +210,14 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
             <h4 className="text-zinc-500 text-xs font-bold max-w-xs truncate">Audio Rendering Active</h4>
          </div>
       </div>
-      <div 
-        ref={containerRef} 
+      <div
         className={cn(
           "w-full h-full transition-opacity duration-500",
           dataSaver ? "opacity-0 pointer-events-none z-0" : "opacity-100"
-        )} 
-      />
+        )}
+      >
+        <div ref={containerRef} className="w-full h-full" />
+      </div>
     </div>
   );
 });

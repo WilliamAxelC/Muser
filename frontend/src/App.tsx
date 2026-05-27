@@ -48,17 +48,7 @@ function App() {
     }
   }, [errorToast]);
 
-  // Phase 3.2: Active Tab Eviction Guard
-  React.useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (activeRoomId) {
-        e.preventDefault();
-        e.returnValue = '';
-      }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [activeRoomId]);
+  // Phase 3.2: Removed Active Tab Eviction Guard as part of new architecture
 
   const handleCopyLink = () => {
     const link = `${window.location.origin}/room/${activeRoomId?.toLowerCase()}`;
@@ -75,7 +65,12 @@ function App() {
     }
   }, [activeRoomId]);
 
-  const { isConnected, roomState, isHost, emitMutation, messages, sendMessage } = useSocket(activeRoomId, userId, username, roomPassword, roomTitleInput);
+  const handleRoomClosed = React.useCallback((message: string) => {
+    setErrorToast(message);
+    setActiveRoomId(null);
+  }, []);
+
+  const { isConnected, roomState, isHost, emitMutation, messages, sendMessage } = useSocket(activeRoomId, userId, username, roomPassword, roomTitleInput, isUnsynced, handleRoomClosed);
   const ytPlayerRef = useRef<YouTubePlayerRef>(null);
 
   const [detachedQueue, setDetachedQueue] = useState<{ videoId: string; title: string }[]>([]);

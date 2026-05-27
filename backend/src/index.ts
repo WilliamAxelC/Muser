@@ -459,7 +459,15 @@ io.on('connection', async (socket) => {
             const reqIndex = pendingRequests.findIndex((r: any) => r.id === mutation.payload.requestId);
             if (reqIndex !== -1) {
                 const req = pendingRequests.splice(reqIndex, 1)[0];
-                queue.push({ videoId: req.trackId, title: req.title });
+                if (!currentTrackId || currentTrackId === '') {
+                    currentTrackId = req.trackId;
+                    currentTitle = req.title;
+                    currentPlayhead = 0;
+                    isPlaying = true;
+                    logger.info({ message: '[System] Auto-promoted approved request to idle room', roomId: mutation.payload.roomId, trackId: currentTrackId });
+                } else {
+                    queue.push({ videoId: req.trackId, title: req.title });
+                }
             }
         }
     }
@@ -717,36 +725,44 @@ io.on('connection', async (socket) => {
     rateLimiter.cleanup(socket.id);
 
     if (rId && uId) {
-      const timeout = setTimeout(async () => {
-        disconnectTimeouts.delete(uId);
-        // Announce Leave
-        io.to(rId).emit('ROOM_MESSAGE', {
-          id: `sys-${Date.now()}`,
-          userId: 'system',
-          username: 'System',
-          text: `${socket.data.username} left the room`,
-          timestamp: Date.now()
-        });
-
+      // Immediate Eviction Logic (No Grace Window)
+      (async () => {
         try {
-          const sockets = await io.in(rId).fetchSockets();
-          if (sockets.length === 0) {
-            logger.info({ message: '[System] Room empty, performing garbage collection', room_id: rId });
+          const stateStr = await redis.hget(`room:${rId}:meta`, 'state');
+          if (!stateStr) return; // Room already gone
+          
+          const state = JSON.parse(stateStr);
+          const isHost = state.hostId === uId;
+
+          if (isHost) {
+            logger.info({ message: '[System] Host disconnected, destroying room', room_id: rId, host_id: uId });
+            // Announce closure to everyone before kicking
+            io.to(rId).emit('ROOM_CLOSED', { message: 'Host has left the room' });
+            
+            // Delete room from Redis
             await redis.del(`room:${rId}:meta`, `room:${rId}:join_order`);
+            
+            // Force disconnect all sockets in room
+            const sockets = await io.in(rId).fetchSockets();
+            sockets.forEach(s => s.leave(rId));
           } else {
-            const newHostId = await roomManager.leave(rId, uId);
-            if (newHostId && newHostId !== '') {
-              logger.info({ message: 'Host migrated', room_id: rId, old_host_id: uId, new_host_id: newHostId });
-              await broadcastHostChange(rId, newHostId);
-            }
+            // Normal member leave
+            await roomManager.leave(rId, uId);
+            
+            io.to(rId).emit('ROOM_MESSAGE', {
+              id: `sys-${Date.now()}`,
+              userId: 'system',
+              username: 'System',
+              text: `${socket.data.username} left the room`,
+              timestamp: Date.now()
+            });
+            
             await broadcastRosterUpdate(rId);
           }
         } catch (err) {
-          logger.error({ message: 'Error leaving room', error: err, socket_id: socket.id });
+          logger.error({ message: 'Error handling disconnect', error: err, socket_id: socket.id });
         }
-      }, 15000); // 15-second grace window
-
-      disconnectTimeouts.set(uId, { timeout, oldSocketId: socket.id });
+      })();
     }
   });
 });
