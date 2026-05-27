@@ -4,7 +4,6 @@ import { Server } from 'socket.io';
 import Redis from 'ioredis';
 import dotenv from 'dotenv';
 import { z } from 'zod';
-import ytpl from 'ytpl';
 import logger from './logger';
 import { RoomManager } from './room-manager';
 import { RateLimiter } from './rate-limiter';
@@ -46,7 +45,7 @@ const RoomMutationSchema = z.object({
   correlationId: z.string().max(100),
   payload: z.object({
     roomId: z.string().min(1).max(50).regex(/^[a-zA-Z0-9_-]+$/),
-    type: z.enum(['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'QUEUE_REORDER', 'ROOM_RESYNC', 'QUEUE_ADD', 'QUEUE_REMOVE', 'QUEUE_CLEAR', 'QUEUE_BATCH_APPEND', 'SET_PUBLIC', 'SET_REQUEST_ONLY', 'APPROVE_REQUEST', 'DENY_REQUEST', 'UPDATE_IDENTITY', 'TRANSFER_AUTHORITY']),
+    type: z.enum(['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'BACK', 'QUEUE_REORDER', 'ROOM_RESYNC', 'QUEUE_ADD', 'QUEUE_REMOVE', 'QUEUE_CLEAR', 'QUEUE_BATCH_APPEND', 'SET_PUBLIC', 'SET_REQUEST_ONLY', 'APPROVE_REQUEST', 'DENY_REQUEST', 'UPDATE_IDENTITY', 'TRANSFER_AUTHORITY', 'QUEUE_PLAYLIST_REQUEST', 'SET_TITLE']),
     playhead: z.number().min(0).optional(),
     currentTrackId: z.string().length(11).regex(/^[a-zA-Z0-9_-]{11}$/).optional().or(z.literal('')),
     timestamp: z.number(),
@@ -58,7 +57,9 @@ const RoomMutationSchema = z.object({
     isRequestOnly: z.boolean().optional(),
     requestId: z.string().optional(),
     username: z.string().max(50).optional(),
-    targetUserId: z.string().optional()
+    targetUserId: z.string().optional(),
+    playlistId: z.string().optional(),
+    title: z.string().max(100).optional()
   })
 });
 
@@ -69,6 +70,23 @@ const SendMessageSchema = z.object({
 
 redis.on('connect', () => logger.info({ message: 'Connected to Redis' }));
 redis.on('error', (err) => logger.error({ message: 'Redis connection error', error: err }));
+
+const resolveVideoTitle = async (videoId: string): Promise<string> => {
+  try {
+    const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9'
+      }
+    });
+    if (!response.ok) return `YouTube Video (${videoId})`;
+    const html = await response.text();
+    const titleMatch = html.match(/<title>(.*?) - YouTube<\/title>/) || html.match(/<title>(.*?)<\/title>/);
+    return titleMatch ? titleMatch[1] : `YouTube Video (${videoId})`;
+  } catch (err) {
+    return `YouTube Video (${videoId})`;
+  }
+};
 
 app.get('/health', (req, res) => res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() }));
 
@@ -82,15 +100,73 @@ app.get('/api/rooms', async (req, res) => {
   }
 });
 
-app.get('/api/playlist/:id', async (req, res) => {
-  const playlistId = req.params.id;
+app.get('/api/playlist', async (req, res) => {
+  const rawId = req.query.id as string;
+  if (!rawId) {
+    return res.status(400).json({ error: 'Missing id parameter' });
+  }
+
+  // Sanitize: Isolate alphanumeric ID and handle trailing tracking args
+  const playlistIdMatch = rawId.trim().match(/^([a-zA-Z0-9_-]+)/);
+  const playlistId = playlistIdMatch ? playlistIdMatch[1] : rawId.trim();
+
   try {
-    const playlist = await ytpl(playlistId, { limit: 100 });
-    const items = playlist.items.map(item => item.id);
+    logger.info({ message: '[Playlist] Native unroll request', playlistId });
+    
+    // Explicitly hardcode Desktop User-Agent and strip any incoming client headers
+    const response = await fetch(`https://www.youtube.com/playlist?list=${playlistId}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`YouTube returned status ${response.status}`);
+    }
+
+    const html = await response.text();
+    
+    // Attempt to parse JSON block for titles
+    const jsonMatch = html.match(/var ytInitialData = ({.*?});<\/script>/);
+    if (jsonMatch) {
+        try {
+            const data = JSON.parse(jsonMatch[1]);
+            const contents = data.contents?.twoColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents?.[0]?.playlistVideoListRenderer?.contents;
+            if (contents) {
+                const items = contents
+                    .filter((i: any) => i.playlistVideoRenderer)
+                    .map((i: any) => ({
+                        videoId: i.playlistVideoRenderer.videoId,
+                        title: i.playlistVideoRenderer.title?.runs?.[0]?.text || 'Unknown Title'
+                    }));
+                if (items.length > 0) {
+                    logger.info({ message: '[Playlist] Unrolled with titles', playlistId, count: items.length });
+                    return res.json({ items });
+                }
+            }
+        } catch (e) {
+            logger.warn({ message: '[Playlist] JSON extraction failed, checking regex fallback', error: e });
+        }
+    }
+
+    // Fallback: Just IDs with dummy titles
+    const videoIdRegex = /"videoId":"([a-zA-Z0-9_-]{11})"/g;
+    const matches = Array.from(html.matchAll(videoIdRegex));
+    const videoIds = Array.from(new Set(matches.map(m => m[1])));
+    const items = videoIds.map(id => ({ videoId: id, title: `YouTube Track (${id})` }));
+
+    if (items.length === 0) {
+      console.warn(`[Playlist Diagnostic] No IDs extracted. HTML snippet: ${html.substring(0, 500)}`);
+      return res.status(404).json({ error: 'No videos found in this playlist' });
+    }
+
+    logger.info({ message: '[Playlist] Unrolled with fallback', playlistId, count: items.length });
     res.json({ items });
   } catch (err) {
-    logger.error({ message: 'Failed to fetch playlist', error: err, playlistId });
-    res.status(500).json({ error: 'Failed to fetch playlist' });
+    logger.error({ message: 'Failed to unroll playlist', error: err, playlistId });
+    res.status(500).json({ error: 'Failed to resolve YouTube playlist metadata' });
   }
 });
 
@@ -111,6 +187,7 @@ io.on('connection', async (socket) => {
   const userId = socket.handshake.query.userId as string || `user-${socket.id}`;
   let username = socket.handshake.query.username as string || `Guest_${socket.id.substring(0,4)}`;
   const password = socket.handshake.query.password as string;
+  const roomTitle = socket.handshake.query.title as string;
 
   if (!roomId) {
     logger.warn({ message: '[Diagnostic] Connection attempt without roomId', socket_id: socket.id });
@@ -139,7 +216,7 @@ io.on('connection', async (socket) => {
     io.to(rId).emit('HOST_CHANGED', { hostId: hId, hostName });
   };
 
-  roomManager.join(roomId, socket.id, userId, password).then(async (hostId) => {
+  roomManager.join(roomId, socket.id, userId, password, roomTitle).then(async (hostId) => {
     let currentHostId = hostId;
     
     // Announce Join
@@ -168,7 +245,7 @@ io.on('connection', async (socket) => {
     if (state) {
       const activePeers = sockets.map(s => ({
         socketId: s.id,
-        userId: s.data.userId,
+        userId: s.data.userId?.substring(0, 8) || 'unknown',
         username: s.data.username
       }));
 
@@ -178,11 +255,13 @@ io.on('connection', async (socket) => {
         correlationId: correlation_id,
         payload: {
           roomId,
+          title: state.title,
           isPlaying: state.isPlaying,
           currentPlayhead: state.currentPlayhead,
           currentTrackId: state.currentTrackId,
           updatedAt: state.updatedAt,
           queue: state.queue || [],
+          history: state.history || [],
           isPublic: state.isPublic || false,
           isRequestOnly: state.isRequestOnly || false,
           pendingRequests: state.pendingRequests || [],
@@ -253,7 +332,9 @@ io.on('connection', async (socket) => {
     let isPlaying = state?.isPlaying ?? false;
     let currentPlayhead = mutation.payload.playhead ?? state?.currentPlayhead ?? 0;
     let currentTrackId = mutation.payload.currentTrackId ?? state?.currentTrackId ?? '';
+    let title = mutation.payload.title ?? state?.title ?? mutation.payload.roomId;
     let queue = state?.queue || [];
+    let history = state?.history || [];
     let isPublic = state?.isPublic ?? false;
     let isRequestOnly = state?.isRequestOnly ?? false;
     let pendingRequests = state?.pendingRequests || [];
@@ -269,18 +350,34 @@ io.on('connection', async (socket) => {
         isRequestOnly = mutation.payload.isRequestOnly;
     }
 
+    if (mutation.payload.type === 'SET_TITLE' && mutation.payload.title) {
+        title = mutation.payload.title;
+    }
+
     if (mutation.payload.type === 'QUEUE_ADD' && mutation.payload.item) {
+        const videoId = mutation.payload.item;
+        const title = await resolveVideoTitle(videoId);
+        const item = { videoId, title };
+
         if (isRequestOnly && socket.id !== state?.hostId) {
             // Route to pending requests
             pendingRequests.push({
                 id: `req-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-                trackId: mutation.payload.item,
+                trackId: videoId,
+                title,
                 username: socket.data.username
             });
             // Emit a notification back to the sender
             socket.emit('ERROR', { message: 'Track submitted for host approval.' });
         } else {
-            queue.push(mutation.payload.item);
+            if (!currentTrackId || currentTrackId === '') {
+                currentTrackId = videoId;
+                currentPlayhead = 0;
+                isPlaying = true;
+                logger.info({ message: '[System] Auto-promoted single track add to idle room', roomId: mutation.payload.roomId, trackId: currentTrackId });
+            } else {
+                queue.push(item);
+            }
         }
     }
     
@@ -289,7 +386,7 @@ io.on('connection', async (socket) => {
             const reqIndex = pendingRequests.findIndex((r: any) => r.id === mutation.payload.requestId);
             if (reqIndex !== -1) {
                 const req = pendingRequests.splice(reqIndex, 1)[0];
-                queue.push(req.trackId);
+                queue.push({ videoId: req.trackId, title: req.title });
             }
         }
     }
@@ -309,7 +406,22 @@ io.on('connection', async (socket) => {
         queue = [];
     }
     if (mutation.payload.type === 'QUEUE_BATCH_APPEND' && mutation.payload.items) {
-        queue = queue.concat(mutation.payload.items);
+        const normalized: { videoId: string; title: string }[] = (mutation.payload.items as any[]).map(i => {
+            if (typeof i === 'string') return { videoId: i, title: `YouTube Track (${i})` };
+            return i;
+        });
+
+        if (!currentTrackId || currentTrackId === '') {
+            const batch = [...normalized];
+            const first = batch.shift();
+            currentTrackId = first?.videoId || '';
+            currentPlayhead = 0;
+            isPlaying = true;
+            queue = queue.concat(batch);
+            logger.info({ message: '[System] Auto-promoted first track from batch to idle room', roomId: mutation.payload.roomId, trackId: currentTrackId });
+        } else {
+            queue = queue.concat(normalized);
+        }
     }
     
     if (mutation.payload.type === 'UPDATE_IDENTITY' && mutation.payload.username) {
@@ -334,12 +446,89 @@ io.on('connection', async (socket) => {
     }
 
     if (mutation.payload.type === 'SKIP') {
+        if (currentTrackId) {
+            history.push({ videoId: currentTrackId, title: 'Previous Track' });
+            if (history.length > 50) history.shift();
+        }
         if (queue.length > 0) {
-            currentTrackId = queue.shift() as string;
+            const next = queue.shift();
+            currentTrackId = next?.videoId || '';
             currentPlayhead = 0;
             isPlaying = true;
         } else {
+            currentTrackId = '';
             currentPlayhead = 0;
+            isPlaying = false;
+        }
+    }
+
+    if (mutation.payload.type === 'BACK') {
+        if (history.length > 0) {
+            if (currentTrackId) {
+                queue.unshift({ videoId: currentTrackId, title: 'Pushed back from history' });
+            }
+            const prev = history.pop();
+            currentTrackId = prev?.videoId || '';
+            currentPlayhead = 0;
+            isPlaying = true;
+        }
+    }
+
+    if (mutation.payload.type === 'QUEUE_PLAYLIST_REQUEST' && mutation.payload.playlistId) {
+        const playlistId = mutation.payload.playlistId;
+        try {
+            const ytResponse = await fetch(`https://www.youtube.com/playlist?list=${playlistId}`, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept-Language': 'en-US,en;q=0.9'
+                }
+            });
+            if (ytResponse.ok) {
+                const html = await ytResponse.text();
+                let items: { videoId: string; title: string }[] = [];
+                const jsonMatch = html.match(/var ytInitialData = ({.*?});<\/script>/);
+                if (jsonMatch) {
+                    try {
+                        const data = JSON.parse(jsonMatch[1]);
+                        const contents = data.contents?.twoColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents?.[0]?.playlistVideoListRenderer?.contents;
+                        if (contents) {
+                            items = contents
+                                .filter((i: any) => i.playlistVideoRenderer)
+                                .map((i: any) => ({
+                                    videoId: i.playlistVideoRenderer.videoId,
+                                    title: i.playlistVideoRenderer.title?.runs?.[0]?.text || 'Unknown Title'
+                                }));
+                        }
+                    } catch (e) {}
+                }
+                if (items.length === 0) {
+                    const videoIdRegex = /"videoId":"([a-zA-Z0-9_-]{11})"/g;
+                    const matches = Array.from(html.matchAll(videoIdRegex));
+                    const videoIds = Array.from(new Set(matches.map(m => m[1])));
+                    items = videoIds.map(id => ({ videoId: id, title: `Track ${id}` }));
+                }
+
+                if (items.length > 0) {
+                    // Shuffle
+                    for (let i = items.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [items[i], items[j]] = [items[j], items[i]];
+                    }
+
+                    if (!currentTrackId || currentTrackId === '') {
+                        const batch = [...items];
+                        const first = batch.shift();
+                        currentTrackId = first?.videoId || '';
+                        currentPlayhead = 0;
+                        isPlaying = true;
+                        queue = queue.concat(batch);
+                    } else {
+                        queue = queue.concat(items);
+                    }
+                }
+            }
+        } catch (err) {
+            logger.error({ message: '[Playlist] Backend unroll failed', error: err, playlistId });
         }
     }
 
@@ -347,7 +536,9 @@ io.on('connection', async (socket) => {
       isPlaying,
       currentPlayhead,
       currentTrackId,
+      title,
       queue,
+      history,
       isPublic,
       isRequestOnly,
       pendingRequests
@@ -357,7 +548,7 @@ io.on('connection', async (socket) => {
     const socketsInRoom = await io.in(mutation.payload.roomId).fetchSockets();
     const activePeers = socketsInRoom.map(s => ({
       socketId: s.id,
-      userId: s.data.userId,
+      userId: s.data.userId?.substring(0, 8) || 'unknown',
       username: s.data.username
     }));
 
@@ -367,11 +558,13 @@ io.on('connection', async (socket) => {
       correlationId: mutation.correlationId,
       payload: {
         roomId: mutation.payload.roomId,
+        title,
         isPlaying,
         currentPlayhead,
         currentTrackId,
         updatedAt: Date.now(),
         queue,
+        history,
         isPublic,
         isRequestOnly,
         pendingRequests,

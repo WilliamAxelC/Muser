@@ -9,19 +9,27 @@ export interface ChatMessage {
   timestamp: number;
 }
 
+export interface QueueItem {
+  videoId: string;
+  title: string;
+}
+
 interface StateSync {
+  roomId: string;
+  title: string;
   isPlaying: boolean;
   currentPlayhead: number;
   currentTrackId: string;
   updatedAt: number;
-  queue: string[];
+  queue: QueueItem[];
+  history: QueueItem[];
   isPublic?: boolean;
   isRequestOnly?: boolean;
-  pendingRequests?: { id: string; trackId: string; username: string }[];
+  pendingRequests?: { id: string; trackId: string; title: string; username: string }[];
   peers?: { socketId: string; userId: string; username: string }[];
 }
 
-export function useSocket(roomId: string | null, userId: string, username: string, password?: string) {
+export function useSocket(roomId: string | null, userId: string, username: string, password?: string, title?: string) {
   const [isConnected, setIsConnected] = useState(false);
   const [roomState, setRoomState] = useState<StateSync | null>(null);
   const [hostId, setHostId] = useState<string | null>(null);
@@ -35,7 +43,7 @@ export function useSocket(roomId: string | null, userId: string, username: strin
 
     const socket = io(window.location.origin, {
       path: '/socket.io/',
-      query: { roomId, userId, username, password, correlationId: `ui-${userId}` },
+      query: { roomId, userId, username, password, title, correlationId: `ui-${userId}` },
       transports: ['websocket', 'polling']
     });
 
@@ -80,7 +88,7 @@ export function useSocket(roomId: string | null, userId: string, username: strin
       socket.disconnect();
       setMessages([]);
     };
-  }, [roomId, userId, username]);
+  }, [roomId, userId, username, title]);
 
   const emitMutation = useCallback((type: string, payload: any = {}) => {
     if (!socketRef.current || !roomId) {

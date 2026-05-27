@@ -42,8 +42,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ messages, onSendMessage, cur
             
             if (isSystem) {
               return (
-                <div key={msg.id} className="flex justify-center py-2">
-                  <div className="text-[10px] font-bold text-zinc-600 uppercase tracking-[0.2em] bg-zinc-800/30 px-4 py-1 rounded-full border border-zinc-800/50">
+                <div key={msg.id} className="flex justify-center py-1">
+                  <div className="text-[10px] font-bold text-zinc-600/60 uppercase tracking-[0.2em] break-words text-center px-6">
                     --- {msg.text} ---
                   </div>
                 </div>
