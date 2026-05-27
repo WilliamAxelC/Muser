@@ -676,16 +676,28 @@ io.on('connection', async (socket) => {
                         [items[i], items[j]] = [items[j], items[i]];
                     }
 
-                    if (!currentTrackId || currentTrackId === '') {
-                        const batch = [...items];
-                        const first = batch.shift();
-                        currentTrackId = first?.videoId || '';
-                        currentTitle = first?.title || '';
-                        currentPlayhead = 0;
-                        isPlaying = true;
-                        queue = queue.concat(batch);
+                    if (isRequestOnly && socket.data.userId !== state?.hostId) {
+                        items.forEach(item => {
+                            pendingRequests.push({
+                                id: `req-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+                                trackId: item.videoId,
+                                title: item.title,
+                                username: socket.data.username
+                            });
+                        });
+                        socket.emit('ERROR', { message: 'Playlist submitted for host approval.' });
                     } else {
-                        queue = queue.concat(items);
+                        if (!currentTrackId || currentTrackId === '') {
+                            const batch = [...items];
+                            const first = batch.shift();
+                            currentTrackId = first?.videoId || '';
+                            currentTitle = first?.title || '';
+                            currentPlayhead = 0;
+                            isPlaying = true;
+                            queue = queue.concat(batch);
+                        } else {
+                            queue = queue.concat(items);
+                        }
                     }
                 }
             }
