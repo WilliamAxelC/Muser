@@ -189,4 +189,9 @@ export class RoomManager {
     }
     return rooms.sort((a, b) => b.updatedAt - a.updatedAt);
   }
+
+  async setHost(roomId: string, socketId: string) {
+    const metaKey = `room:${roomId}:meta`;
+    await this.redis.hset(metaKey, 'host_uid', socketId);
+  }
 }

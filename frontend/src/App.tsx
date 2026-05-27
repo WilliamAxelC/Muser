@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useSocket } from './hooks/useSocket';
 import { cn } from './lib/utils';
-import { Play, Pause, SkipForward, Users, Radio, LogOut, Plus, Settings, Lock, Share2, Check, MessageSquare, ListMusic, VolumeX, Headphones } from 'lucide-react';
+import { Play, Pause, SkipForward, Users, Radio, LogOut, Plus, Settings, Share2, Check, MessageSquare, ListMusic, VolumeX, Headphones, Menu, X, ChevronRight, Crown } from 'lucide-react';
 import { YouTubePlayer } from './components/YouTubePlayer';
 import type { YouTubePlayerRef } from './components/YouTubePlayer';
 import { ChatView } from './components/ChatView';
@@ -33,6 +33,8 @@ function App() {
   const [copied, setCopied] = useState(false);
   const [mobileTab, setMobileTab] = useState<'queue' | 'chat'>('chat');
   const [audioMode, setAudioMode] = useState<'sync' | 'passive'>('sync');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [showUserList, setShowUserList] = useState(false);
 
   const handleCopyLink = () => {
     const link = `${window.location.origin}/room/${activeRoomId?.toLowerCase()}`;
@@ -49,7 +51,7 @@ function App() {
     }
   }, [activeRoomId]);
 
-  const { isConnected, roomState, hostId, isHost, emitMutation, socketId, messages, sendMessage } = useSocket(activeRoomId, userId, username, roomPassword);
+  const { isConnected, roomState, hostId, isHost, emitMutation, messages, sendMessage } = useSocket(activeRoomId, userId, username, roomPassword);
   const ytPlayerRef = useRef<YouTubePlayerRef>(null);
 
   const handleNameChange = (newName: string) => {
@@ -68,7 +70,7 @@ function App() {
     e.preventDefault();
     if (!trackUrl.trim()) return;
 
-    // Check for Playlist
+    // Check for Playlist (including music subdomain)
     const listRegex = /[?&]list=([a-zA-Z0-9_-]+)/;
     const listMatch = trackUrl.match(listRegex);
 
@@ -169,7 +171,6 @@ function App() {
   const handleCreateRoom = () => {
     const newRoomId = Math.random().toString(36).substr(2, 6).toUpperCase();
     setActiveRoomId(newRoomId);
-    // Setting public state happens after connecting, we need to wait for isConnected
   };
 
   React.useEffect(() => {
@@ -216,14 +217,13 @@ function App() {
                       Room Password (Optional)
                     </label>
                     <div className="relative">
-                      <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" />
                       <input
                         id="create-password"
                         type="password"
                         placeholder="••••••••"
                         value={roomPassword}
                         onChange={(e) => setRoomPassword(e.target.value)}
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-700 transition-all placeholder:text-zinc-800 text-white"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-700 transition-all placeholder:text-zinc-800 text-white"
                       />
                     </div>
                   </div>
@@ -255,13 +255,12 @@ function App() {
                     </button>
                   </div>
                   <div className="relative">
-                    <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" />
                     <input
                       type="password"
                       placeholder="Room Password (if required)"
                       value={roomPassword}
                       onChange={(e) => setRoomPassword(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-700 transition-all placeholder:text-zinc-800 text-white"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-700 transition-all placeholder:text-zinc-800 text-white"
                     />
                   </div>
                 </div>
@@ -290,238 +289,146 @@ function App() {
   }
 
   return (
-    <div className="h-screen flex flex-col p-4 md:p-6 lg:p-8 max-w-[1600px] mx-auto overflow-hidden">
-      {/* Header */}
-      <header className="flex items-center justify-between mb-6 shrink-0">
-        <div className="flex items-center gap-4">
-          <div className="flex flex-col">
+    <div className="h-screen flex flex-col bg-black text-white overflow-hidden relative">
+      {/* Top Header */}
+      <header className="h-16 shrink-0 border-b border-zinc-900 bg-zinc-950/50 backdrop-blur-xl px-4 md:px-8 flex items-center justify-between z-40">
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="flex flex-col min-w-0">
             <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-bold text-white leading-none tracking-tight truncate max-w-[200px]">{activeRoomId}</h2>
+              <h2 className="text-xl font-black text-white tracking-tighter truncate">{activeRoomId}</h2>
               <button 
                 onClick={handleCopyLink}
-                className="p-1.5 hover:bg-zinc-900 rounded-md transition-all text-zinc-500 hover:text-white shrink-0"
-                title="Copy Invite Link"
+                className="p-1 hover:bg-zinc-800 rounded-md transition-all text-zinc-500 hover:text-white shrink-0"
               >
-                {copied ? <Check className="w-4 h-4 text-green-500" /> : <Share2 className="w-4 h-4" />}
+                {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Share2 className="w-3.5 h-3.5" />}
               </button>
-            </div>
-            <div className="flex items-center gap-2 mt-1">
-              <div className={cn("w-2 h-2 rounded-full", isConnected ? "bg-green-500" : "bg-red-500")} />
-              <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
-                {isConnected ? "Synchronized" : "Disconnected"}
-              </span>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 md:gap-3">
+          <button
+            onClick={() => setShowUserList(!showUserList)}
+            className={cn(
+              "p-2 rounded-xl transition-all",
+              showUserList ? "bg-white text-black" : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+            )}
+          >
+            <Users className="w-5 h-5" />
+          </button>
+          
           {isHost && (
             <button
               onClick={() => setShowSettings(!showSettings)}
               className={cn(
-                "p-2.5 rounded-xl transition-all active:scale-95",
-                showSettings ? "bg-white text-black shadow-lg shadow-white/10" : "text-zinc-400 hover:text-white hover:bg-zinc-900"
+                "p-2 rounded-xl transition-all",
+                showSettings ? "bg-white text-black" : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
               )}
             >
               <Settings className="w-5 h-5" />
             </button>
           )}
 
+          <div className="w-px h-6 bg-zinc-800 mx-1" />
+
+          <button
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className={cn(
+              "p-2 rounded-xl transition-all lg:hidden",
+              isSidebarOpen ? "bg-blue-600 text-white" : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+            )}
+          >
+            {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+          
           <button
             onClick={handleLeave}
-            className="p-2.5 hover:bg-zinc-900 rounded-xl transition-all text-zinc-400 hover:text-white active:scale-95"
+            className="p-2 hover:bg-zinc-900 rounded-xl transition-all text-zinc-400 hover:text-white"
           >
             <LogOut className="w-5 h-5" />
           </button>
         </div>
       </header>
 
-      {showSettings && isHost && (
-        <div className="mb-6 p-6 bg-zinc-900 rounded-3xl border border-zinc-800 animate-in fade-in slide-in-from-top-4 duration-300 shrink-0">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-sm font-bold text-zinc-300 uppercase tracking-widest">Room Settings</h3>
-            <button 
-              onClick={handleCopyLink}
-              className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-xs font-bold text-white transition-all active:scale-95"
-            >
-              {copied ? <Check className="w-3 h-3 text-green-500" /> : <Share2 className="w-3 h-3" />}
-              {copied ? "Copied!" : "Copy Invite Link"}
-            </button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-bold text-white">Public Discovery</div>
-                  <div className="text-xs text-zinc-500">Visible in the global room list</div>
+      {/* Main Layout Container */}
+      <div className="flex-1 flex min-h-0 relative">
+        {/* Central Workspace (Media Player) */}
+        <main className="flex-1 flex flex-col min-w-0 bg-black relative">
+          <div className="flex-1 flex flex-col items-center justify-center p-4 md:p-8 space-y-8 overflow-y-auto">
+            {/* Player Card */}
+            <div className="w-full max-w-4xl aspect-video bg-zinc-900 rounded-[2rem] border border-zinc-800 shadow-2xl relative overflow-hidden group">
+              {roomState?.currentTrackId ? (
+                <YouTubePlayer
+                  ref={ytPlayerRef}
+                  key={roomState.currentTrackId}
+                  videoId={roomState.currentTrackId}
+                  isPlaying={roomState.isPlaying}
+                  targetPlayhead={roomState.currentPlayhead}
+                  isHost={isHost}
+                  onStateChange={handlePlayerStateChange}
+                  updatedAt={roomState.updatedAt}
+                  volume={volume}
+                  dataSaver={dataSaver}
+                  muted={audioMode === 'passive'}
+                />
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center space-y-6">
+                  <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center animate-pulse">
+                    <Radio className="w-8 h-8 text-zinc-600" />
+                  </div>
+                  <h3 className="text-2xl md:text-3xl font-black text-zinc-700 tracking-tighter">
+                    READY FOR <span className="text-zinc-600">INGESTION</span>
+                  </h3>
                 </div>
-                <button 
-                  onClick={() => emitMutation('SET_PUBLIC', { isPublic: !roomState?.isPublic })}
-                  className={cn(
-                    "w-12 h-6 rounded-full transition-colors relative",
-                    roomState?.isPublic ? "bg-blue-600" : "bg-zinc-800"
-                  )}
-                >
-                  <div className={cn("w-4 h-4 bg-white rounded-full absolute top-1 transition-all", roomState?.isPublic ? "right-1" : "left-1")} />
-                </button>
-              </div>
+              )}
+            </div>
 
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-bold text-white">Governance Mode</div>
-                  <div className="text-xs text-zinc-500">Require host approval for songs</div>
+            {/* Controls & Input */}
+            <div className="w-full max-w-2xl space-y-8">
+              <form onSubmit={handleAddTrack} className="flex gap-2 p-1.5 bg-zinc-900 rounded-[1.5rem] border border-zinc-800 focus-within:ring-2 focus-within:ring-zinc-700 transition-all">
+                <input
+                  type="text"
+                  placeholder="Paste YouTube/Music link..."
+                  value={trackUrl}
+                  onChange={(e) => setTrackUrl(e.target.value)}
+                  className="flex-1 bg-transparent px-4 py-2 text-sm focus:outline-none placeholder:text-zinc-600 text-white"
+                />
+                <button type="submit" className="bg-white text-black p-2.5 rounded-xl hover:bg-zinc-200 transition-all active:scale-95">
+                  <Plus className="w-5 h-5" />
+                </button>
+              </form>
+
+              <div className="flex flex-col items-center gap-8">
+                <div className="flex items-center gap-8">
+                  <button className="p-4 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-600 transition-all hover:scale-105 active:scale-90">
+                    <SkipForward className="w-6 h-6 rotate-180 fill-current" />
+                  </button>
+                  
+                  <button 
+                    onClick={() => {
+                      const isPlaying = roomState?.isPlaying;
+                      const playhead = ytPlayerRef.current?.getCurrentTime() || roomState?.currentPlayhead || 0;
+                      emitMutation(isPlaying ? 'PAUSE' : 'PLAY', { playhead });
+                    }}
+                    disabled={!isHost || (!roomState?.currentTrackId && (roomState?.queue?.length || 0) === 0)}
+                    className={cn(
+                      "w-20 h-20 flex items-center justify-center rounded-[2rem] transition-all hover:scale-105 active:scale-95 shadow-2xl disabled:opacity-20 disabled:grayscale disabled:cursor-not-allowed",
+                      roomState?.isPlaying ? "bg-zinc-900 border border-zinc-800 text-white" : "bg-white text-black"
+                    )}
+                  >
+                    {roomState?.isPlaying ? <Pause className="w-9 h-9 fill-current" /> : <Play className="w-9 h-9 fill-current ml-1" />}
+                  </button>
+
+                  <button 
+                    onClick={() => emitMutation('SKIP')}
+                    disabled={!isHost || (roomState?.queue?.length || 0) === 0}
+                    className="p-4 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-600 transition-all hover:scale-105 active:scale-90 disabled:opacity-20 disabled:grayscale disabled:cursor-not-allowed"
+                  >
+                    <SkipForward className="w-6 h-6 fill-current" />
+                  </button>
                 </div>
-                <button 
-                  onClick={() => emitMutation('SET_REQUEST_ONLY', { isRequestOnly: !roomState?.isRequestOnly })}
-                  className={cn(
-                    "w-12 h-6 rounded-full transition-colors relative",
-                    roomState?.isRequestOnly ? "bg-blue-600" : "bg-zinc-800"
-                  )}
-                >
-                  <div className={cn("w-4 h-4 bg-white rounded-full absolute top-1 transition-all", roomState?.isRequestOnly ? "right-1" : "left-1")} />
-                </button>
-              </div>
-            </div>
 
-            <div className="space-y-4">
-              <div className="p-4 bg-zinc-950 rounded-2xl border border-zinc-800/50">
-                 <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-4">Audio Topology</div>
-                 <div className="grid grid-cols-2 gap-2">
-                    <button 
-                      onClick={() => setAudioMode('sync')}
-                      className={cn(
-                        "flex flex-col items-center gap-2 p-3 rounded-xl border transition-all",
-                        audioMode === 'sync' ? "bg-blue-500/10 border-blue-500 text-blue-400" : "bg-zinc-900 border-zinc-800 text-zinc-500"
-                      )}
-                    >
-                      <Headphones className="w-4 h-4" />
-                      <span className="text-[10px] font-bold uppercase">Master Sync</span>
-                    </button>
-                    <button 
-                      onClick={() => setAudioMode('passive')}
-                      className={cn(
-                        "flex flex-col items-center gap-2 p-3 rounded-xl border transition-all",
-                        audioMode === 'passive' ? "bg-zinc-800 border-zinc-700 text-zinc-300" : "bg-zinc-900 border-zinc-800 text-zinc-500"
-                      )}
-                    >
-                      <VolumeX className="w-4 h-4" />
-                      <span className="text-[10px] font-bold uppercase">Passive</span>
-                    </button>
-                 </div>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="p-4 bg-zinc-950 rounded-2xl border border-zinc-800/50">
-                 <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Room Authority</div>
-                 <div className="text-xs text-zinc-400 truncate">Host ID: <span className="font-mono text-blue-400">{hostId}</span></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col lg:grid lg:grid-cols-4 gap-6 min-h-0">
-        {/* Left: Queue (Desktop) / Tabbed (Mobile) */}
-        <div className={cn(
-          "lg:col-span-1 min-h-0",
-          mobileTab !== 'queue' && "hidden lg:block"
-        )}>
-          <QueueView 
-            queue={roomState?.queue || []} 
-            isHost={isHost} 
-            onReorder={(oldIndex, newIndex) => emitMutation('QUEUE_REORDER', { index: oldIndex, newIndex })}
-            onRemove={(index) => emitMutation('QUEUE_REMOVE', { index })}
-            isRequestOnly={roomState?.isRequestOnly}
-            onToggleRequestOnly={(val) => emitMutation('SET_REQUEST_ONLY', { isRequestOnly: val })}
-            pendingRequests={roomState?.pendingRequests}
-            onApprove={(id) => emitMutation('APPROVE_REQUEST', { requestId: id })}
-            onDeny={(id) => emitMutation('DENY_REQUEST', { requestId: id })}
-          />
-        </div>
-
-        {/* Center: Player */}
-        <div className="order-first lg:order-none col-span-1 lg:col-span-2 flex flex-col items-center justify-start space-y-6 min-h-0 overflow-y-auto lg:overflow-visible">
-          {/* Player Container */}
-          <div className="w-full flex-1 min-h-[300px] lg:min-h-0 bg-zinc-900 rounded-[2.5rem] border border-zinc-800 flex flex-col items-center justify-center relative overflow-hidden group shadow-2xl">
-            {roomState?.currentTrackId ? (
-              <YouTubePlayer
-                ref={ytPlayerRef}
-                key={roomState.currentTrackId}
-                videoId={roomState.currentTrackId}
-                isPlaying={roomState.isPlaying}
-                targetPlayhead={roomState.currentPlayhead}
-                isHost={isHost}
-                onStateChange={handlePlayerStateChange}
-                updatedAt={roomState.updatedAt}
-                volume={volume}
-                dataSaver={dataSaver}
-                muted={audioMode === 'passive'}
-              />            ) : (
-              <div className="z-10 text-center space-y-6 p-8">
-                 <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-zinc-800/50 border border-zinc-700/50 text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em]">
-                   System Idle
-                 </div>
-                 <h3 className="text-3xl md:text-4xl font-black text-zinc-700 max-w-md mx-auto leading-tight tracking-tight">
-                   Paste a URL to <span className="text-zinc-600">initialize</span>
-                 </h3>
-              </div>
-            )}
-          </div>
-
-          {/* Player UI Controls Wrapper */}
-          <div className="w-full space-y-6 shrink-0">
-            {/* Track Input */}
-            <form onSubmit={handleAddTrack} className="w-full flex gap-3">
-              <input
-                type="text"
-                placeholder="Paste YouTube URL or ID"
-                value={trackUrl}
-                onChange={(e) => setTrackUrl(e.target.value)}
-                className="flex-1 bg-zinc-900 border border-zinc-800 rounded-2xl px-6 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-700 transition-all placeholder:text-zinc-600 text-white shadow-inner"
-              />
-              <button
-                type="submit"
-                className="bg-white hover:bg-zinc-200 text-black p-4 rounded-2xl transition-all active:scale-95 shadow-lg shadow-white/5"
-              >
-                <Plus className="w-6 h-6" />
-              </button>
-            </form>
-
-            {/* Main Controls Section */}
-            <div className="flex flex-col items-center gap-8 w-full">
-              <div className="flex items-center gap-10">
-                <button className="p-5 bg-zinc-900 hover:bg-zinc-800 rounded-3xl border border-zinc-800 text-zinc-500 transition-all hover:scale-110 active:scale-90">
-                  <SkipForward className="w-6 h-6 rotate-180 fill-current" />
-                </button>
-                
-                <button 
-                  onClick={() => {
-                    const isPlaying = roomState?.isPlaying;
-                    const playhead = ytPlayerRef.current?.getCurrentTime() || roomState?.currentPlayhead || 0;
-                    emitMutation(isPlaying ? 'PAUSE' : 'PLAY', { playhead });
-                  }}
-                  disabled={!isHost}
-                  className={cn(
-                    "w-24 h-24 flex items-center justify-center rounded-[2.5rem] transition-all hover:scale-105 active:scale-95 shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed",
-                    roomState?.isPlaying ? "bg-zinc-900 border border-zinc-800 text-white" : "bg-white text-black"
-                  )}
-                >
-                  {roomState?.isPlaying ? <Pause className="w-10 h-10 fill-current" /> : <Play className="w-10 h-10 fill-current ml-1" />}
-                </button>
-
-                <button 
-                  onClick={() => emitMutation('SKIP')}
-                  disabled={!isHost}
-                  className="p-5 bg-zinc-900 hover:bg-zinc-800 rounded-3xl border border-zinc-800 text-zinc-500 transition-all hover:scale-110 active:scale-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <SkipForward className="w-6 h-6 fill-current" />
-                </button>
-              </div>
-
-              {/* Volume & Data Saver Bar */}
-              <div className="w-full max-w-md flex items-center gap-8 px-6 py-4 bg-zinc-900/50 rounded-3xl border border-zinc-800/50 backdrop-blur-md">
+                <div className="w-full max-w-md flex items-center gap-8 px-6 py-4 bg-zinc-900/50 rounded-3xl border border-zinc-800/50 backdrop-blur-md">
                  <div className="flex-1 flex items-center gap-4">
                    <div className="p-2 rounded-lg bg-zinc-800/50">
                      <VolumeX className="w-4 h-4 text-zinc-400" />
@@ -551,90 +458,199 @@ function App() {
                    <div className={cn("w-2 h-2 rounded-full", dataSaver ? "bg-blue-400 animate-pulse shadow-[0_0_8px_rgba(96,165,250,0.5)]" : "bg-zinc-600")} />
                    <span className="text-[10px] font-black uppercase tracking-wider">Data Saver</span>
                  </button>
+                </div>
               </div>
             </div>
           </div>
+        </main>
 
-          {/* Mobile Tab Navigation */}
-          <div className="flex lg:hidden w-full bg-zinc-900 rounded-2xl p-1.5 border border-zinc-800 shrink-0">
+        {/* Desktop Sidebar / Mobile Drawer */}
+        <aside className={cn(
+          "fixed inset-y-0 right-0 z-50 w-80 bg-zinc-950 border-l border-zinc-900 transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 flex flex-col shadow-2xl lg:shadow-none",
+          isSidebarOpen ? "translate-x-0" : "translate-x-full lg:translate-x-0",
+          "lg:w-96"
+        )}>
+          {/* Mobile Close Handle */}
+          <button 
+            onClick={() => setIsSidebarOpen(false)}
+            className="lg:hidden absolute -left-12 top-4 p-3 bg-zinc-950 border border-zinc-900 rounded-l-xl text-zinc-400"
+          >
+            <ChevronRight className="w-6 h-6" />
+          </button>
+
+          {/* Sidebar Tabs */}
+          <div className="flex border-b border-zinc-900 shrink-0">
             <button 
               onClick={() => setMobileTab('chat')}
               className={cn(
-                "flex-1 flex items-center justify-center gap-3 py-3 rounded-xl text-xs font-black transition-all",
-                mobileTab === 'chat' ? "bg-zinc-800 text-white shadow-lg" : "text-zinc-500"
+                "flex-1 py-4 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] transition-all",
+                mobileTab === 'chat' ? "text-white border-b-2 border-white" : "text-zinc-600 hover:text-zinc-400"
               )}
             >
-              <MessageSquare className="w-4 h-4" />
-              CHAT
+              <MessageSquare className="w-3 h-3" />
+              Stream Chat
             </button>
             <button 
               onClick={() => setMobileTab('queue')}
               className={cn(
-                "flex-1 flex items-center justify-center gap-3 py-3 rounded-xl text-xs font-black transition-all",
-                mobileTab === 'queue' ? "bg-zinc-800 text-white shadow-lg" : "text-zinc-500"
+                "flex-1 py-4 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] transition-all",
+                mobileTab === 'queue' ? "text-white border-b-2 border-white" : "text-zinc-600 hover:text-zinc-400"
               )}
             >
-              <ListMusic className="w-4 h-4" />
-              QUEUE
+              <ListMusic className="w-3 h-3" />
+              Media Queue
               {roomState?.queue && roomState.queue.length > 0 && (
-                <span className="bg-blue-600 text-[10px] px-2 py-0.5 rounded-full ml-1 font-bold">{roomState.queue.length}</span>
+                <span className="bg-blue-600 text-[8px] px-1.5 py-0.5 rounded-full ml-1">{roomState.queue.length}</span>
               )}
             </button>
           </div>
-        </div>
 
-        {/* Right: Chat (Desktop) / Tabbed (Mobile) */}
-        <div className={cn(
-          "lg:col-span-1 min-h-0",
-          mobileTab !== 'chat' && "hidden lg:block"
-        )}>
-          <ChatView messages={messages} onSendMessage={sendMessage} currentUserId={userId} />
-        </div>
-      </main>
+          <div className="flex-1 min-h-0">
+            {mobileTab === 'chat' ? (
+              <ChatView messages={messages} onSendMessage={sendMessage} currentUserId={userId} />
+            ) : (
+              <QueueView 
+                queue={roomState?.queue || []} 
+                isHost={isHost} 
+                onReorder={(oldIndex, newIndex) => emitMutation('QUEUE_REORDER', { index: oldIndex, newIndex })}
+                onRemove={(index) => emitMutation('QUEUE_REMOVE', { index })}
+                isRequestOnly={roomState?.isRequestOnly}
+                onToggleRequestOnly={(val) => emitMutation('SET_REQUEST_ONLY', { isRequestOnly: val })}
+                pendingRequests={roomState?.pendingRequests}
+                onApprove={(id) => emitMutation('APPROVE_REQUEST', { requestId: id })}
+                onDeny={(id) => emitMutation('DENY_REQUEST', { requestId: id })}
+              />
+            )}
+          </div>
+        </aside>
 
-      {/* Footer / Status Bar */}
-      <footer className="mt-6 pt-6 border-t border-zinc-900 flex flex-col md:flex-row gap-4 shrink-0">
-        <div className="flex-1 bg-zinc-900/40 p-4 rounded-[1.5rem] border border-zinc-800/50 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center shrink-0">
-            <Users className="w-5 h-5 text-zinc-500" />
+        {/* Overlays */}
+        {showUserList && (
+          <div className="absolute top-16 right-4 w-64 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
+             <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+               <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Active Peers</span>
+               <button onClick={() => setShowUserList(false)}><X className="w-4 h-4 text-zinc-600" /></button>
+             </div>
+             <div className="max-h-64 overflow-y-auto p-2 space-y-1">
+                {(roomState?.peers || []).map((peer) => (
+                  <div key={peer.socketId} className="flex items-center justify-between p-2 rounded-xl bg-zinc-800/30">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-bold text-white shrink-0">
+                         {peer.username[0]?.toUpperCase() || '?'}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-xs font-bold truncate">
+                          {peer.username}
+                          {peer.userId === userId && " (You)"}
+                        </span>
+                        <span className="text-[9px] text-zinc-600 font-mono">ID: {peer.userId.substring(0,8)}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {peer.socketId === hostId ? (
+                        <Crown className="w-3.5 h-3.5 text-yellow-500 fill-current" />
+                      ) : (
+                        isHost && (
+                          <button 
+                            onClick={() => {
+                              if (confirm(`Transfer Master authority to ${peer.username}?`)) {
+                                emitMutation('TRANSFER_AUTHORITY', { targetUserId: peer.socketId });
+                              }
+                            }}
+                            className="p-1.5 hover:bg-white hover:text-black rounded-md transition-all text-zinc-600"
+                            title="Make Master"
+                          >
+                            <Crown className="w-3 h-3" />
+                          </button>
+                        )
+                      )}
+                    </div>
+                  </div>
+                ))}
+             </div>
           </div>
-          <div className="min-w-0">
-            <div className="text-zinc-500 uppercase text-[9px] font-black tracking-[0.2em] mb-0.5">Host Authority</div>
-            <div className="text-sm font-bold text-zinc-200 truncate">
-              {isHost ? "Master Node" : "Peer Instance"}
-            </div>
-          </div>
-          <div className="ml-auto px-3 py-1 rounded-lg bg-zinc-950 border border-zinc-800 font-mono text-[9px] text-zinc-600 truncate max-w-[150px]">
-            {hostId || "DETACHED"}
-          </div>
-        </div>
+        )}
 
-        <div className="flex-1 bg-zinc-900/40 p-4 rounded-[1.5rem] border border-zinc-800/50 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center shrink-0">
-            <Radio className="w-5 h-5 text-zinc-500" />
+        {showSettings && isHost && (
+          <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+             <div className="w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-[2rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300">
+               <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
+                 <h3 className="text-sm font-black text-zinc-300 uppercase tracking-widest">Administrative Matrix</h3>
+                 <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-zinc-800 rounded-xl transition-all"><X className="w-5 h-5" /></button>
+               </div>
+               <div className="p-8 space-y-8">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-bold text-white">Public Discovery</div>
+                      <div className="text-xs text-zinc-500">Visible in the global discovery set</div>
+                    </div>
+                    <button 
+                      onClick={() => emitMutation('SET_PUBLIC', { isPublic: !roomState?.isPublic })}
+                      className={cn("w-12 h-6 rounded-full transition-all relative", roomState?.isPublic ? "bg-blue-600" : "bg-zinc-800")}
+                    >
+                      <div className={cn("w-4 h-4 bg-white rounded-full absolute top-1 transition-all", roomState?.isPublic ? "right-1" : "left-1")} />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-bold text-white">Governance Mode</div>
+                      <div className="text-xs text-zinc-500">Require host approval for guest adds</div>
+                    </div>
+                    <button 
+                      onClick={() => emitMutation('SET_REQUEST_ONLY', { isRequestOnly: !roomState?.isRequestOnly })}
+                      className={cn("w-12 h-6 rounded-full transition-all relative", roomState?.isRequestOnly ? "bg-blue-600" : "bg-zinc-800")}
+                    >
+                      <div className={cn("w-4 h-4 bg-white rounded-full absolute top-1 transition-all", roomState?.isRequestOnly ? "right-1" : "left-1")} />
+                    </button>
+                  </div>
+                  <div className="p-4 bg-zinc-950 rounded-2xl border border-zinc-800/50">
+                    <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-4">Audio Topology</div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <button 
+                          onClick={() => setAudioMode('sync')}
+                          className={cn(
+                            "flex flex-col items-center gap-2 p-3 rounded-xl border transition-all",
+                            audioMode === 'sync' ? "bg-blue-500/10 border-blue-500 text-blue-400" : "bg-zinc-900 border-zinc-800 text-zinc-500"
+                          )}
+                        >
+                          <Headphones className="w-4 h-4" />
+                          <span className="text-[10px] font-bold uppercase">Master Sync</span>
+                        </button>
+                        <button 
+                          onClick={() => setAudioMode('passive')}
+                          className={cn(
+                            "flex flex-col items-center gap-2 p-3 rounded-xl border transition-all",
+                            audioMode === 'passive' ? "bg-zinc-800 border-zinc-700 text-zinc-300" : "bg-zinc-900 border-zinc-800 text-zinc-500"
+                          )}
+                        >
+                          <VolumeX className="w-4 h-4" />
+                          <span className="text-[10px] font-bold uppercase">Passive</span>
+                        </button>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={handleCopyLink}
+                    className="w-full py-4 bg-zinc-800 hover:bg-zinc-700 text-white rounded-2xl font-bold flex items-center justify-center gap-2 transition-all"
+                  >
+                    {copied ? <Check className="w-4 h-4 text-green-500" /> : <Share2 className="w-4 h-4" />}
+                    {copied ? "Link Harvested" : "Copy Invite Hyperlink"}
+                  </button>
+               </div>
+             </div>
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between mb-0.5">
-              <div className="text-zinc-500 uppercase text-[9px] font-black tracking-[0.2em]">User Profile</div>
-              <button 
-                onClick={() => {
-                  const next = prompt("Update display identity:", username);
-                  if (next && next.trim()) {
-                    handleNameChange(next.trim());
-                    emitMutation('UPDATE_IDENTITY', { username: next.trim() });
-                  }
-                }}
-                className="text-[9px] text-blue-500 hover:text-blue-400 uppercase font-black tracking-widest"
-              >
-                Sync Name
-              </button>
-            </div>
-            <div className="text-sm font-bold text-zinc-200 truncate break-all">{username}</div>
-          </div>
-          <div className="px-3 py-1 rounded-lg bg-zinc-950 border border-zinc-800 font-mono text-[9px] text-zinc-600 truncate max-w-[120px]">
-             {socketId ? `SOCK: ${socketId.substring(0,6)}` : "OFFLINE"}
-          </div>
-        </div>
+        )}
+      </div>
+
+      {/* Footer Status Bar (Ultra Thin) */}
+      <footer className="h-8 shrink-0 bg-zinc-950 border-t border-zinc-900 px-4 flex items-center justify-between">
+         <div className="flex items-center gap-4 text-[9px] font-black uppercase tracking-widest text-zinc-600">
+           <div className="flex items-center gap-1.5">
+             <div className={cn("w-1.5 h-1.5 rounded-full", isConnected ? "bg-green-500" : "bg-red-500")} />
+             {isConnected ? "Network: Stable" : "Network: Detached"}
+           </div>
+           <div>Mode: {isHost ? "Master" : "Listener"}</div>
+         </div>
+         <div className="text-[9px] font-mono text-zinc-700">MRelay v1.1.0-beta</div>
       </footer>
     </div>
   );
