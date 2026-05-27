@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useSocket } from './hooks/useSocket';
 import { cn } from './lib/utils';
 import { Play, Pause, SkipForward, Radio, LogOut, Settings, Share2, Check, MessageSquare, ListMusic, VolumeX, Headphones, Menu, X, ChevronRight, Crown, Users, RotateCcw, Link2, Globe, ShieldCheck } from 'lucide-react';
@@ -39,6 +39,7 @@ function App() {
   const [errorToast, setErrorToast] = useState<string | null>(null);
   const [isCreatingPublic, setIsCreatingPublic] = useState(true);
   const [isUnsynced, setIsUnsynced] = useState(false);
+  const prevUnsyncedRef = useRef(false);
 
   React.useEffect(() => {
     if (errorToast) {
@@ -64,6 +65,26 @@ function App() {
 
   const { isConnected, roomState, hostId, isHost, emitMutation, messages, sendMessage } = useSocket(activeRoomId, userId, username, roomPassword, roomTitleInput);
   const ytPlayerRef = useRef<YouTubePlayerRef>(null);
+
+  // Phase 1.2: Immediate catch-up re-synchronization on DETACHED → SYNCED transition
+  useEffect(() => {
+    if (prevUnsyncedRef.current === true && isUnsynced === false) {
+      // User just toggled back to SYNCED - snap to master timeline
+      if (roomState && ytPlayerRef.current) {
+        const networkDriftOffset = (Date.now() - (roomState.updatedAt || Date.now())) / 1000;
+        const masterPlayhead = (roomState.currentPlayhead || 0) + (roomState.isPlaying ? networkDriftOffset : 0);
+        const safeTarget = Math.max(0, masterPlayhead);
+        try {
+          (ytPlayerRef.current as any).getCurrentTime; // access check
+          // Force player re-sync by updating playhead state indirectly
+          emitMutation('ROOM_RESYNC', { playhead: safeTarget });
+        } catch (err) {
+          console.error('[Re-Sync] Failed to snap playhead on re-sync', err);
+        }
+      }
+    }
+    prevUnsyncedRef.current = isUnsynced;
+  }, [isUnsynced, roomState, emitMutation]);
 
   const handleNameChange = (newName: string) => {
     setUsername(newName);
@@ -325,31 +346,33 @@ function App() {
 
             <div className="flex flex-col items-center gap-8 w-full max-w-2xl">
               <div className="flex items-center gap-6 md:gap-8">
-                <button onClick={() => emitMutation('BACK')} disabled={!isHost || (roomState?.history?.length || 0) === 0} className="p-4 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-600 transition-all hover:scale-105 active:scale-90 disabled:opacity-20 disabled:pointer-events-none" title="Previous Track">
+                <button onClick={() => emitMutation('BACK')} disabled={(!isHost && !isUnsynced) || (roomState?.history?.length || 0) === 0} className="p-4 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-600 transition-all hover:scale-105 active:scale-90 disabled:opacity-20 disabled:pointer-events-none" title="Previous Track">
                   <RotateCcw className="w-6 h-6" />
                 </button>                  
-                <button onClick={() => { const isPlaying = roomState?.isPlaying; const playhead = ytPlayerRef.current?.getCurrentTime() || roomState?.currentPlayhead || 0; emitMutation(isPlaying ? 'PAUSE' : 'PLAY', { playhead }); }} disabled={!isHost || (!roomState?.currentTrackId && (roomState?.queue?.length || 0) === 0)} className={cn( "w-20 h-20 flex items-center justify-center rounded-[2rem] transition-all hover:scale-105 active:scale-95 shadow-2xl disabled:opacity-20 disabled:grayscale disabled:cursor-not-allowed", roomState?.isPlaying ? "bg-zinc-900 border border-zinc-800 text-white" : "bg-white text-black" )} >
+                <button onClick={() => { const isPlaying = roomState?.isPlaying; const playhead = ytPlayerRef.current?.getCurrentTime() || roomState?.currentPlayhead || 0; emitMutation(isPlaying ? 'PAUSE' : 'PLAY', { playhead }); }} disabled={(!isHost && !isUnsynced) || (!roomState?.currentTrackId && (roomState?.queue?.length || 0) === 0)} className={cn( "w-20 h-20 flex items-center justify-center rounded-[2rem] transition-all hover:scale-105 active:scale-95 shadow-2xl disabled:opacity-20 disabled:grayscale disabled:cursor-not-allowed", roomState?.isPlaying ? "bg-zinc-900 border border-zinc-800 text-white" : "bg-white text-black" )} >
                   {roomState?.isPlaying ? <Pause className="w-9 h-9 fill-current" /> : <Play className="w-9 h-9 fill-current ml-1" />}
                 </button>
-                <button onClick={() => emitMutation('SKIP')} disabled={!isHost || (roomState?.queue?.length || 0) === 0} className="p-4 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-600 transition-all hover:scale-105 active:scale-90 disabled:opacity-20 disabled:grayscale disabled:cursor-not-allowed" title="Skip Track">
+                <button onClick={() => emitMutation('SKIP')} disabled={(!isHost && !isUnsynced) || (roomState?.queue?.length || 0) === 0} className="p-4 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-600 transition-all hover:scale-105 active:scale-90 disabled:opacity-20 disabled:grayscale disabled:cursor-not-allowed" title="Skip Track">
                   <SkipForward className="w-6 h-6 fill-current" />
                 </button>
               </div>
 
-              <div className="w-full max-w-md flex flex-wrap items-center justify-center gap-4 md:gap-6 px-4 md:px-6 py-4 bg-zinc-900/50 rounded-3xl border border-zinc-800/50 backdrop-blur-md">
-                 <div className="flex-1 min-w-[140px] flex items-center gap-4">
+              <div className="w-full max-w-md flex items-center justify-between gap-4 px-4 md:px-6 py-4 bg-zinc-900/50 rounded-3xl border border-zinc-800/50 backdrop-blur-md">
+                 {/* DIV Group A: Left Aligned Controls — Volume Button, Slider, Level */}
+                 <div className="flex items-center gap-3 min-w-[160px]">
                    <div className="p-2 rounded-lg bg-zinc-800/50 flex-shrink-0"> <VolumeX className="w-4 h-4 text-zinc-400" /> </div>
                    <input type="range" min="0" max="100" value={volume} onChange={(e) => setVolume(parseInt(e.target.value))} className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-white" />
                    <span className="text-[10px] font-mono font-bold text-zinc-400 w-8 flex-shrink-0 text-right">{volume}</span>
                  </div>
-                 
-                 <div className="hidden md:block w-px h-6 bg-zinc-800 flex-shrink-0" />
-                 
-                 <div className="flex items-center gap-3 flex-shrink-0">
-                    <button onClick={() => setIsUnsynced(!isUnsynced)} className={cn("flex items-center gap-2 px-3 py-2 rounded-xl border transition-all flex-shrink-0", isUnsynced ? "bg-orange-500/10 border-orange-500/50 text-orange-400" : "bg-zinc-800/50 border-zinc-700/50 text-zinc-500")} title="Bypass Master Sync">
-                       <ShieldCheck className={cn("w-3.5 h-3.5", isUnsynced ? "text-orange-400" : "text-zinc-600")} />
-                       <span className="text-[9px] font-black uppercase tracking-widest">{isUnsynced ? 'Detached' : 'Synced'}</span>
-                    </button>
+
+                 {/* DIV Group B: Right Aligned Controls — Sync Badge, Data Saver Toggle */}
+                 <div className="flex items-center gap-4 ml-auto flex-shrink-0">
+                    {!isHost && (
+                      <button onClick={() => setIsUnsynced(!isUnsynced)} className={cn("flex items-center gap-2 px-3 py-2 rounded-xl border transition-all flex-shrink-0", isUnsynced ? "bg-orange-500/10 border-orange-500/50 text-orange-400" : "bg-zinc-800/50 border-zinc-700/50 text-zinc-500")} title="Bypass Master Sync">
+                         <ShieldCheck className={cn("w-3.5 h-3.5", isUnsynced ? "text-orange-400" : "text-zinc-600")} />
+                         <span className="text-[9px] font-black uppercase tracking-widest">{isUnsynced ? 'Detached' : 'Synced'}</span>
+                      </button>
+                    )}
 
                     <button onClick={() => setDataSaver(!dataSaver)} className={cn( "flex items-center gap-2 px-3 py-2 rounded-xl transition-all border flex-shrink-0 min-w-max whitespace-nowrap", dataSaver ? "bg-blue-500/10 border-blue-500/50 text-blue-400" : "bg-zinc-800/50 border-zinc-700/50 text-zinc-500 hover:text-zinc-300" )} >
                       <div className={cn("w-1.5 h-1.5 rounded-full", dataSaver ? "bg-blue-400 animate-pulse shadow-[0_0_8px_rgba(96,165,250,0.5)]" : "bg-zinc-600")} />
@@ -449,7 +472,7 @@ function App() {
               <span className="text-zinc-500">IDENTITY: {username}</span>
            </div>
          </div>
-         <div className="text-[9px] font-mono text-zinc-800 tracking-tighter uppercase opacity-50">MRelay Core v1.2.0</div>
+         <div className="text-[9px] font-mono text-zinc-800 tracking-tighter uppercase opacity-50">MRelay Core v1.3.1</div>
       </footer>
     </div>
   );
