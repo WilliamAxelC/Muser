@@ -185,26 +185,27 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
 
   return (
     <div className="w-full h-full rounded-2xl overflow-hidden bg-black relative">
-      {dataSaver && (
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-zinc-950">
-           <img 
-             src={`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`} 
-             alt="Thumbnail" 
-             className="absolute inset-0 z-10 w-full h-full object-cover opacity-30 grayscale blur-sm"
-           />
-           <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 space-y-4">
-              <div className="px-4 py-2 bg-blue-600/20 border border-blue-500/50 rounded-full text-[10px] font-black uppercase tracking-widest text-blue-400">
-                Low Bandwidth Mode
-              </div>
-              <h4 className="text-zinc-500 text-xs font-bold max-w-xs truncate">Audio Rendering Active</h4>
-           </div>
-        </div>
-      )}
+      <div className={cn(
+        "absolute inset-0 flex flex-col items-center justify-center bg-zinc-950 transition-opacity duration-500",
+        dataSaver ? "opacity-100 z-10" : "opacity-0 pointer-events-none"
+      )}>
+         <img 
+           src={`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`} 
+           alt="Thumbnail" 
+           className="absolute inset-0 z-10 w-full h-full object-cover opacity-30 grayscale blur-sm"
+         />
+         <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 space-y-4">
+            <div className="px-4 py-2 bg-blue-600/20 border border-blue-500/50 rounded-full text-[10px] font-black uppercase tracking-widest text-blue-400">
+              Low Bandwidth Mode
+            </div>
+            <h4 className="text-zinc-500 text-xs font-bold max-w-xs truncate">Audio Rendering Active</h4>
+         </div>
+      </div>
       <div 
         ref={containerRef} 
         className={cn(
           "w-full h-full transition-opacity duration-500",
-          dataSaver ? "z-0 opacity-1" : "opacity-100"
+          dataSaver ? "opacity-0 pointer-events-none z-0" : "opacity-100"
         )} 
       />
     </div>
