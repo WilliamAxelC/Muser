@@ -73,16 +73,10 @@ redis.on('error', (err) => logger.error({ message: 'Redis connection error', err
 
 const resolveVideoTitle = async (videoId: string): Promise<string> => {
   try {
-    const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9'
-      }
-    });
+    const response = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
     if (!response.ok) return `YouTube Video (${videoId})`;
-    const html = await response.text();
-    const titleMatch = html.match(/<title>(.*?) - YouTube<\/title>/) || html.match(/<title>(.*?)<\/title>/);
-    return titleMatch ? titleMatch[1] : `YouTube Video (${videoId})`;
+    const data = await response.json();
+    return data.title || `YouTube Video (${videoId})`;
   } catch (err) {
     return `YouTube Video (${videoId})`;
   }
@@ -129,7 +123,7 @@ app.get('/api/playlist', async (req, res) => {
     const html = await response.text();
     
     // Attempt to parse JSON block for titles
-    const jsonMatch = html.match(/var ytInitialData = ({.*?});<\/script>/);
+    const jsonMatch = html.match(/(?:var\s+)?ytInitialData\s*=\s*({.*?});(?:<\/script>)?/);
     if (jsonMatch) {
         try {
             const data = JSON.parse(jsonMatch[1]);
@@ -647,7 +641,7 @@ io.on('connection', async (socket) => {
             if (ytResponse.ok) {
                 const html = await ytResponse.text();
                 let items: { videoId: string; title: string }[] = [];
-                const jsonMatch = html.match(/var ytInitialData = ({.*?});<\/script>/);
+                const jsonMatch = html.match(/(?:var\s+)?ytInitialData\s*=\s*({.*?});(?:<\/script>)?/);
                 if (jsonMatch) {
                     try {
                         const data = JSON.parse(jsonMatch[1]);
