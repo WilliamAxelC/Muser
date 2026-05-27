@@ -10,6 +10,9 @@ declare global {
 
 export interface YouTubePlayerRef {
   getCurrentTime: () => number;
+  playVideo: () => void;
+  pauseVideo: () => void;
+  seekTo: (seconds: number) => void;
 }
 
 interface YouTubePlayerProps {
@@ -48,6 +51,21 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
         return playerRef.current.getCurrentTime() || 0;
       }
       return 0;
+    },
+    playVideo: () => {
+      if (playerRef.current && isReady) {
+        playerRef.current.playVideo();
+      }
+    },
+    pauseVideo: () => {
+      if (playerRef.current && isReady) {
+        playerRef.current.pauseVideo();
+      }
+    },
+    seekTo: (seconds: number) => {
+      if (playerRef.current && isReady) {
+        playerRef.current.seekTo(seconds, true);
+      }
     }
   }));
 
