@@ -41,6 +41,7 @@ export class RoomManager {
           redis.call('HSET', meta_key, 'host_uid', socket_id)
           redis.call('HSET', meta_key, 'is_playing', '0')
           redis.call('HSET', meta_key, 'current_track_id', '')
+          redis.call('HSET', meta_key, 'current_title', '')
           redis.call('HSET', meta_key, 'last_playhead', '0')
           redis.call('HSET', meta_key, 'updated_at', timestamp)
           redis.call('HSET', meta_key, 'queue', '[]')
@@ -126,6 +127,7 @@ export class RoomManager {
     isPlaying: boolean, 
     currentPlayhead: number, 
     currentTrackId: string,
+    currentTitle?: string,
     title?: string,
     queue?: { videoId: string; title: string }[],
     history?: { videoId: string; title: string; status: 'played' | 'skipped'; timestamp: number }[],
@@ -141,6 +143,7 @@ export class RoomManager {
       is_playing: state.isPlaying ? '1' : '0',
       last_playhead: state.currentPlayhead.toString(),
       current_track_id: state.currentTrackId,
+      current_title: state.currentTitle || '',
       updated_at: timestamp.toString()
     };
     if (state.queue) {
@@ -173,6 +176,7 @@ export class RoomManager {
       isPlaying: data.is_playing === '1',
       currentPlayhead: parseFloat(data.last_playhead || '0'),
       currentTrackId: data.current_track_id || '',
+      currentTitle: data.current_title || '',
       title: data.title || roomId,
       updatedAt: parseInt(data.updated_at || '0'),
       queue: JSON.parse(data.queue || '[]') as { videoId: string; title: string }[],

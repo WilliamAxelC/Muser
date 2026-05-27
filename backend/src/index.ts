@@ -332,6 +332,7 @@ io.on('connection', async (socket) => {
     let isPlaying = state?.isPlaying ?? false;
     let currentPlayhead = mutation.payload.playhead ?? state?.currentPlayhead ?? 0;
     let currentTrackId = mutation.payload.currentTrackId ?? state?.currentTrackId ?? '';
+    let currentTitle = state?.currentTitle ?? '';
     let title = mutation.payload.title ?? state?.title ?? mutation.payload.roomId;
     let queue = state?.queue || [];
     let history = state?.history || [];
@@ -372,6 +373,7 @@ io.on('connection', async (socket) => {
         } else {
             if (!currentTrackId || currentTrackId === '') {
                 currentTrackId = videoId;
+                currentTitle = videoTitle;
                 currentPlayhead = 0;
                 isPlaying = true;
                 logger.info({ message: '[System] Auto-promoted single track add to idle room', roomId: mutation.payload.roomId, trackId: currentTrackId });
@@ -421,6 +423,7 @@ io.on('connection', async (socket) => {
             const batch = [...normalized];
             const first = batch.shift();
             currentTrackId = first?.videoId || '';
+            currentTitle = first?.title || '';
             currentPlayhead = 0;
             isPlaying = true;
             queue = queue.concat(batch);
@@ -453,12 +456,9 @@ io.on('connection', async (socket) => {
 
     if (mutation.payload.type === 'SKIP') {
         if (currentTrackId) {
-            // Find current title if possible, or use a placeholder
-            // Note: current title isn't easily accessible without more tracking, 
-            // but we can try to resolve it or just use "Played Track"
             history.push({ 
                 videoId: currentTrackId, 
-                title: 'Played Track', 
+                title: currentTitle || `YouTube Video (${currentTrackId})`, 
                 status: 'played', 
                 timestamp: Date.now() 
             });
@@ -467,10 +467,12 @@ io.on('connection', async (socket) => {
         if (queue.length > 0) {
             const next = queue.shift();
             currentTrackId = next?.videoId || '';
+            currentTitle = next?.title || '';
             currentPlayhead = 0;
             isPlaying = true;
         } else {
             currentTrackId = '';
+            currentTitle = '';
             currentPlayhead = 0;
             isPlaying = false;
         }
@@ -480,7 +482,7 @@ io.on('connection', async (socket) => {
         if (currentTrackId) {
             history.push({ 
                 videoId: currentTrackId, 
-                title: 'Skipped Track', 
+                title: currentTitle || `YouTube Video (${currentTrackId})`, 
                 status: 'skipped', 
                 timestamp: Date.now() 
             });
@@ -494,6 +496,7 @@ io.on('connection', async (socket) => {
         });
 
         currentTrackId = target?.videoId || '';
+        currentTitle = target?.title || '';
         currentPlayhead = 0;
         isPlaying = true;
         
@@ -503,10 +506,11 @@ io.on('connection', async (socket) => {
     if (mutation.payload.type === 'BACK') {
         if (history.length > 0) {
             if (currentTrackId) {
-                queue.unshift({ videoId: currentTrackId, title: 'Returned to Queue' });
+                queue.unshift({ videoId: currentTrackId, title: currentTitle || `YouTube Video (${currentTrackId})` });
             }
             const prev = history.pop();
             currentTrackId = prev?.videoId || '';
+            currentTitle = prev?.title || '';
             currentPlayhead = 0;
             isPlaying = true;
         }
@@ -557,6 +561,7 @@ io.on('connection', async (socket) => {
                         const batch = [...items];
                         const first = batch.shift();
                         currentTrackId = first?.videoId || '';
+                        currentTitle = first?.title || '';
                         currentPlayhead = 0;
                         isPlaying = true;
                         queue = queue.concat(batch);
@@ -574,6 +579,7 @@ io.on('connection', async (socket) => {
       isPlaying,
       currentPlayhead,
       currentTrackId,
+      currentTitle,
       title,
       queue,
       history,
