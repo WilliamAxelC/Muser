@@ -12,7 +12,7 @@ export class RoomManager {
   private defineScripts() {
     // Lua script to join a room and return the current host
     // Keys: [meta_key, join_order_key]
-    // Args: [socket_id, user_id, timestamp, ttl, password]
+    // Args: [socket_id, user_id, timestamp, ttl, password, title]
     this.redis.defineCommand('joinRoom', {
       numberOfKeys: 2,
       lua: `
@@ -23,6 +23,7 @@ export class RoomManager {
         local timestamp = ARGV[3]
         local ttl = ARGV[4]
         local password = ARGV[5]
+        local title = ARGV[6]
 
         -- Check password if room exists
         local existing_password = redis.call('HGET', meta_key, 'password')
@@ -43,6 +44,8 @@ export class RoomManager {
           redis.call('HSET', meta_key, 'last_playhead', '0')
           redis.call('HSET', meta_key, 'updated_at', timestamp)
           redis.call('HSET', meta_key, 'queue', '[]')
+          redis.call('HSET', meta_key, 'history', '[]')
+          redis.call('HSET', meta_key, 'title', title)
           if password and password ~= '' then
             redis.call('HSET', meta_key, 'password', password)
           end
@@ -95,14 +98,14 @@ export class RoomManager {
     });
   }
 
-  async join(roomId: string, socketId: string, userId: string, password?: string): Promise<string> {
+  async join(roomId: string, socketId: string, userId: string, password?: string, title?: string): Promise<string> {
     const metaKey = `room:${roomId}:meta`;
     const joinOrderKey = `room:${roomId}:join_order`;
     const ttl = 12 * 60 * 60; // 12 hours
     const timestamp = Date.now();
 
     // @ts-ignore - custom command
-    const result = await this.redis.joinRoom(metaKey, joinOrderKey, socketId, userId, timestamp, ttl, password || '');
+    const result = await this.redis.joinRoom(metaKey, joinOrderKey, socketId, userId, timestamp, ttl, password || '', title || roomId);
     if (result === 'ERR_INVALID_PASSWORD') {
       throw new Error('INVALID_PASSWORD');
     }
@@ -123,10 +126,12 @@ export class RoomManager {
     isPlaying: boolean, 
     currentPlayhead: number, 
     currentTrackId: string,
-    queue?: string[],
+    title?: string,
+    queue?: { videoId: string; title: string }[],
+    history?: { videoId: string; title: string }[],
     isPublic?: boolean,
     isRequestOnly?: boolean,
-    pendingRequests?: { id: string; trackId: string; username: string }[]
+    pendingRequests?: { id: string; trackId: string; title: string; username: string }[]
   }) {
     const metaKey = `room:${roomId}:meta`;
     const ttl = 12 * 60 * 60;
@@ -140,6 +145,9 @@ export class RoomManager {
     };
     if (state.queue) {
       update.queue = JSON.stringify(state.queue);
+    }
+    if (state.history) {
+      update.history = JSON.stringify(state.history);
     }
     if (state.isPublic !== undefined) {
       update.is_public = state.isPublic ? '1' : '0';
@@ -165,11 +173,13 @@ export class RoomManager {
       isPlaying: data.is_playing === '1',
       currentPlayhead: parseFloat(data.last_playhead || '0'),
       currentTrackId: data.current_track_id || '',
+      title: data.title || roomId,
       updatedAt: parseInt(data.updated_at || '0'),
-      queue: JSON.parse(data.queue || '[]'),
+      queue: JSON.parse(data.queue || '[]') as { videoId: string; title: string }[],
+      history: JSON.parse(data.history || '[]') as { videoId: string; title: string }[],
       isPublic: data.is_public === '1',
       isRequestOnly: data.is_request_only === '1',
-      pendingRequests: JSON.parse(data.pending_requests || '[]')
+      pendingRequests: JSON.parse(data.pending_requests || '[]') as { id: string; trackId: string; title: string; username: string }[]
     };
   }
 

@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
 import { GripVertical, Trash2, Check, X, Shield, ShieldAlert } from 'lucide-react';
 
+import type { QueueItem } from '../hooks/useSocket';
+
 interface PendingRequest {
   id: string;
   trackId: string;
+  title: string;
   username: string;
 }
 
 interface QueueViewProps {
-  queue: string[];
+  queue: QueueItem[];
   isHost: boolean;
   onReorder: (oldIndex: number, newIndex: number) => void;
   onRemove: (index: number) => void;
@@ -104,9 +107,9 @@ export const QueueView: React.FC<QueueViewProps> = ({
             <div className="text-center text-zinc-600 text-sm mt-8">Queue is empty</div>
           ) : (
             <ul className="space-y-2">
-              {queue.map((trackId, idx) => (
+              {queue.map((item, idx) => (
                 <li
-                  key={`${trackId}-${idx}`}
+                  key={`${item.videoId}-${idx}`}
                   draggable={isHost}
                   onDragStart={(e) => handleDragStart(e, idx)}
                   onDragOver={(e) => handleDragOver(e, idx)}
@@ -119,8 +122,8 @@ export const QueueView: React.FC<QueueViewProps> = ({
                   )}
                   <div className="text-xs text-zinc-500 w-4 font-mono text-right">{idx + 1}.</div>
                   <div className="flex-1 truncate text-sm font-medium text-zinc-300">
-                    <a href={`https://youtube.com/watch?v=${trackId}`} target="_blank" rel="noreferrer" className="hover:text-white transition-colors">
-                      {trackId}
+                    <a href={`https://youtube.com/watch?v=${item.videoId}`} target="_blank" rel="noreferrer" className="hover:text-white transition-colors">
+                      {item.title}
                     </a>
                   </div>
                   {isHost && (
@@ -146,14 +149,14 @@ export const QueueView: React.FC<QueueViewProps> = ({
                   className="flex flex-col gap-2 p-3 bg-zinc-950/50 rounded-xl border border-zinc-800/50"
                 >
                   <div className="flex justify-between items-start">
-                    <div className="flex flex-col">
-                      <a href={`https://youtube.com/watch?v=${req.trackId}`} target="_blank" rel="noreferrer" className="text-sm font-medium text-zinc-300 hover:text-white transition-colors">
-                        {req.trackId}
+                    <div className="flex flex-col min-w-0">
+                      <a href={`https://youtube.com/watch?v=${req.trackId}`} target="_blank" rel="noreferrer" className="text-sm font-medium text-zinc-300 hover:text-white transition-colors truncate">
+                        {req.title}
                       </a>
                       <span className="text-[10px] text-zinc-500 mt-1">Requested by <span className="text-zinc-400">{req.username}</span></span>
                     </div>
                     {isHost && (
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 shrink-0">
                         <button
                           onClick={() => onApprove?.(req.id)}
                           className="p-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 rounded-lg transition-colors"

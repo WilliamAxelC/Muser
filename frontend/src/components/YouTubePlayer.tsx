@@ -16,11 +16,12 @@ interface YouTubePlayerProps {
   isPlaying: boolean;
   targetPlayhead: number;
   isHost: boolean;
-  onStateChange: (state: { isPlaying: boolean; playhead: number }) => void;
+  onStateChange: (state: { isPlaying: boolean; playhead: number; isEnded?: boolean }) => void;
   updatedAt: number;
   volume?: number;
   dataSaver?: boolean;
   muted?: boolean;
+  isUnsynced?: boolean;
 }
 
 export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
@@ -32,7 +33,8 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
   updatedAt,
   volume = 50,
   dataSaver = false,
-  muted = false
+  muted = false,
+  isUnsynced = false
 }, ref) => {
   const playerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -48,8 +50,10 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
     }
   }));
 
-  // Load YouTube API
+  // Load YouTube API - Only if NOT in data saver mode
   useEffect(() => {
+    if (dataSaver) return;
+
     if (!window.YT) {
       const tag = document.createElement('script');
       tag.src = "https://www.youtube.com/iframe_api";
@@ -64,7 +68,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
     }
 
     function initPlayer() {
-      if (playerRef.current) return;
+      if (playerRef.current || !containerRef.current) return;
       
       playerRef.current = new window.YT.Player(containerRef.current, {
         height: '100%',
@@ -91,9 +95,10 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
       if (playerRef.current) {
         playerRef.current.destroy();
         playerRef.current = null;
+        setIsReady(false);
       }
     };
-  }, []);
+  }, [dataSaver, videoId]);
 
   // Handle Volume Changes
   useEffect(() => {
@@ -109,7 +114,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
 
   // Handle Playback State Sync
   useEffect(() => {
-    if (!isReady || !playerRef.current) return;
+    if (!isReady || !playerRef.current || isUnsynced) return;
 
     // Apply Play/Pause
     const currentPlayerState = playerRef.current.getPlayerState();
@@ -121,24 +126,19 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
       playerRef.current.pauseVideo();
     }
 
-    // Drift Compensation
+    // Drift Compensation / Seek to Target
     const localPlayhead = playerRef.current.getCurrentTime();
     const transitDelay = (Date.now() - updatedAt) / 1000;
     const computedTarget = isPlaying ? targetPlayhead + transitDelay : targetPlayhead;
     const drift = localPlayhead - computedTarget;
 
-    // Sync Deadzone: Early return to suppress minor fractional offsets
-    if (Math.abs(drift) < 2.0) {
-      return;
-    }
-
-    if (!isNaN(computedTarget)) {
+    if (Math.abs(drift) > 2.0 && !isNaN(computedTarget)) {
       const safeTarget = Math.max(0, computedTarget);
-      console.log(`[Sync] Drift detected: ${drift.toFixed(2)}s. Seeking to ${safeTarget.toFixed(2)}s`);
+      console.log(`[Sync] Real state change or significant drift detected. Seeking to ${safeTarget.toFixed(2)}s`);
       isAutomatedChange.current = true;
       playerRef.current.seekTo(safeTarget, true);
     }
-  }, [isReady, isPlaying, targetPlayhead, updatedAt]);
+  }, [isReady, isPlaying, targetPlayhead, videoId, isUnsynced]); 
 
   const handlePlayerStateChange = (event: any) => {
     if (isAutomatedChange.current) {
@@ -146,10 +146,17 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
       return;
     }
 
+    const newState = event.data;
+
+    // Auto-advance logic for host
+    if (newState === window.YT.PlayerState.ENDED && isHost) {
+      onStateChange({ isPlaying: false, playhead: 0, isEnded: true });
+      return;
+    }
+
     // Only host propagates state changes
     if (!isHost) return;
 
-    const newState = event.data;
     const playhead = playerRef.current.getCurrentTime();
 
     if (newState === window.YT.PlayerState.PLAYING) {
@@ -160,8 +167,24 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
   };
 
   return (
-    <div className={`w-full h-full rounded-2xl overflow-hidden bg-black transition-opacity duration-300 ${dataSaver ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-      <div ref={containerRef} />
+    <div className="w-full h-full rounded-2xl overflow-hidden bg-black relative">
+      {dataSaver ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950">
+           <img 
+             src={`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`} 
+             alt="Thumbnail" 
+             className="w-full h-full object-cover opacity-30 grayscale blur-sm"
+           />
+           <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 space-y-4">
+              <div className="px-4 py-2 bg-blue-600/20 border border-blue-500/50 rounded-full text-[10px] font-black uppercase tracking-widest text-blue-400">
+                Low Bandwidth Mode
+              </div>
+              <h4 className="text-zinc-500 text-xs font-bold max-w-xs truncate">Audio Rendering Active</h4>
+           </div>
+        </div>
+      ) : (
+        <div ref={containerRef} className="w-full h-full" />
+      )}
     </div>
   );
 });
