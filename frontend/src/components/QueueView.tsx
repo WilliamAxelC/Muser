@@ -19,11 +19,16 @@ interface HistoryItem {
 
 interface QueueViewProps {
   queue: QueueItem[];
+  detachedQueue?: QueueItem[];
+  isUnsynced?: boolean;
   history: HistoryItem[];
   isHost: boolean;
   onReorder: (oldIndex: number, newIndex: number) => void;
+  onLocalReorder?: (oldIndex: number, newIndex: number) => void;
   onRemove: (index: number) => void;
+  onLocalRemove?: (index: number) => void;
   onJump: (index: number) => void;
+  onLocalJump?: (index: number) => void;
   isRequestOnly?: boolean;
   onToggleRequestOnly?: (val: boolean) => void;
   pendingRequests?: PendingRequest[];
@@ -32,15 +37,18 @@ interface QueueViewProps {
 }
 
 export const QueueView: React.FC<QueueViewProps> = ({ 
-  queue, history = [], isHost, onReorder, onRemove, onJump,
+  queue, detachedQueue, isUnsynced, history = [], isHost, onReorder, onLocalReorder, onRemove, onLocalRemove, onJump, onLocalJump,
   isRequestOnly, onToggleRequestOnly, 
   pendingRequests = [], onApprove, onDeny 
 }) => {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'queue' | 'pending' | 'history'>('queue');
+  const [queueMode, setQueueMode] = useState<'room' | 'local'>('room');
+
+  const activeQueue = (queueMode === 'local' && isUnsynced) ? (detachedQueue || []) : queue;
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
-    if (!isHost) {
+    if (!isHost && queueMode === 'room') {
       e.preventDefault();
       return;
     }
@@ -52,13 +60,17 @@ export const QueueView: React.FC<QueueViewProps> = ({
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
-    if (!isHost || draggedIndex === null || draggedIndex === index) return;
+    if ((!isHost && queueMode === 'room') || draggedIndex === null || draggedIndex === index) return;
   };
 
   const handleDrop = (e: React.DragEvent, index: number) => {
     e.preventDefault();
-    if (!isHost || draggedIndex === null || draggedIndex === index) return;
-    onReorder(draggedIndex, index);
+    if ((!isHost && queueMode === 'room') || draggedIndex === null || draggedIndex === index) return;
+    if (queueMode === 'local') {
+      onLocalReorder?.(draggedIndex, index);
+    } else {
+      onReorder(draggedIndex, index);
+    }
     setDraggedIndex(null);
   };
 
@@ -132,31 +144,48 @@ export const QueueView: React.FC<QueueViewProps> = ({
       
       <div className="flex-1 overflow-y-auto p-2">
         {activeTab === 'queue' && (
-          queue.length === 0 ? (
-            <div className="text-center text-zinc-600 text-sm mt-8">Queue is empty</div>
-          ) : (
+          <>
+            {isUnsynced && (
+              <div className="flex bg-zinc-950 rounded-lg p-1 mb-3">
+                <button
+                  onClick={() => setQueueMode('room')}
+                  className={`flex-1 text-[10px] font-black uppercase tracking-widest py-1.5 rounded-md transition-all ${queueMode === 'room' ? 'bg-zinc-800 text-white' : 'text-zinc-600 hover:text-zinc-400'}`}
+                >
+                  Room Queue
+                </button>
+                <button
+                  onClick={() => setQueueMode('local')}
+                  className={`flex-1 text-[10px] font-black uppercase tracking-widest py-1.5 rounded-md transition-all ${queueMode === 'local' ? 'bg-amber-500/20 text-amber-500' : 'text-zinc-600 hover:text-zinc-400'}`}
+                >
+                  My Session Queue
+                </button>
+              </div>
+            )}
+            {activeQueue.length === 0 ? (
+              <div className="text-center text-zinc-600 text-sm mt-8">Queue is empty</div>
+            ) : (
             <ul className="space-y-2">
-              {queue.map((item, idx) => (
+              {activeQueue.map((item, idx) => (
                 <li
                   key={`${item.videoId}-${idx}`}
-                  draggable={isHost}
+                  draggable={isHost || queueMode === 'local'}
                   onDragStart={(e) => handleDragStart(e, idx)}
                   onDragOver={(e) => handleDragOver(e, idx)}
                   onDrop={(e) => handleDrop(e, idx)}
                   onDragEnd={handleDragEnd}
-                  onClick={() => isHost && onJump(idx)}
-                  className={`flex items-center gap-3 p-3 bg-zinc-950/50 hover:bg-zinc-800/80 rounded-xl border border-zinc-800/50 transition-colors group ${draggedIndex === idx ? 'opacity-50 border-dashed' : ''} ${isHost ? 'cursor-pointer' : ''}`}
+                  onClick={() => (isHost || queueMode === 'local') ? (queueMode === 'local' ? onLocalJump?.(idx) : onJump(idx)) : null}
+                  className={`flex items-center gap-3 p-3 bg-zinc-950/50 hover:bg-zinc-800/80 rounded-xl border border-zinc-800/50 transition-colors group ${draggedIndex === idx ? 'opacity-50 border-dashed' : ''} ${(isHost || queueMode === 'local') ? 'cursor-pointer' : ''}`}
                 >
-                  {isHost && (
+                  {(isHost || queueMode === 'local') && (
                     <GripVertical className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 cursor-grab active:cursor-grabbing" onClick={(e) => e.stopPropagation()} />
                   )}
                   <div className="text-xs text-zinc-500 w-4 font-mono text-right">{idx + 1}.</div>
                   <div className="flex-1 truncate text-sm font-medium text-zinc-300">
                     {item.title}
                   </div>
-                  {isHost && (
+                  {(isHost || queueMode === 'local') && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); onRemove(idx); }}
+                      onClick={(e) => { e.stopPropagation(); queueMode === 'local' ? onLocalRemove?.(idx) : onRemove(idx); }}
                       className="p-1.5 hover:bg-red-500/20 text-zinc-600 hover:text-red-400 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -165,7 +194,8 @@ export const QueueView: React.FC<QueueViewProps> = ({
                 </li>
               ))}
             </ul>
-          )
+            )}
+          </>
         )}
 
         {activeTab === 'pending' && (

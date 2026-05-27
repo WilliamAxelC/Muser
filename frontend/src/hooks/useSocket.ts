@@ -82,6 +82,14 @@ export function useSocket(roomId: string | null, userId: string, username: strin
       setRoomState(data.payload);
     });
 
+    socket.on('ROSTER_UPDATE', (data: any) => {
+      console.log('[Diagnostic] Received ROSTER_UPDATE:', data);
+      setRoomState((prevState) => {
+        if (!prevState) return prevState;
+        return { ...prevState, peers: data.peers };
+      });
+    });
+
     socket.on('HOST_CHANGED', (data: any) => {
       console.log('[Diagnostic] Received HOST_CHANGED:', data);
       setHostId(data.hostId);
@@ -136,7 +144,7 @@ export function useSocket(roomId: string | null, userId: string, username: strin
     isConnected,
     roomState,
     hostId,
-    isHost: socketRef.current?.id === hostId,
+    isHost: userId === hostId,
     emitMutation,
     socketId: socketRef.current?.id,
     messages,

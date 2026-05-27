@@ -32,13 +32,13 @@ export class RoomManager {
         end
 
         -- Add user to join order
-        redis.call('ZADD', join_order_key, timestamp, socket_id)
+        redis.call('ZADD', join_order_key, timestamp, user_id)
         redis.call('EXPIRE', join_order_key, ttl)
 
         -- Check if host exists
         local host_uid = redis.call('HGET', meta_key, 'host_uid')
         if not host_uid or host_uid == '' then
-          redis.call('HSET', meta_key, 'host_uid', socket_id)
+          redis.call('HSET', meta_key, 'host_uid', user_id)
           redis.call('HSET', meta_key, 'is_playing', '0')
           redis.call('HSET', meta_key, 'current_track_id', '')
           redis.call('HSET', meta_key, 'current_title', '')
@@ -50,7 +50,7 @@ export class RoomManager {
           if password and password ~= '' then
             redis.call('HSET', meta_key, 'password', password)
           end
-          host_uid = socket_id
+          host_uid = user_id
         end
         redis.call('EXPIRE', meta_key, ttl)
 
@@ -60,24 +60,24 @@ export class RoomManager {
 
     // Lua script to leave a room and handle host migration
     // Keys: [meta_key, join_order_key]
-    // Args: [socket_id, timestamp, ttl]
+    // Args: [user_id, timestamp, ttl]
     this.redis.defineCommand('leaveRoom', {
       numberOfKeys: 2,
       lua: `
         local meta_key = KEYS[1]
         local join_order_key = KEYS[2]
-        local socket_id = ARGV[1]
+        local user_id = ARGV[1]
         local timestamp = ARGV[2]
         local ttl = ARGV[3]
 
         -- Remove from join order
-        redis.call('ZREM', join_order_key, socket_id)
+        redis.call('ZREM', join_order_key, user_id)
 
         -- Check if it was the host
         local host_uid = redis.call('HGET', meta_key, 'host_uid')
         local new_host = host_uid
 
-        if host_uid == socket_id then
+        if host_uid == user_id then
           -- Elect new host: lowest score in ZSET
           local next_host = redis.call('ZRANGE', join_order_key, 0, 0)
           if next_host[1] then
@@ -113,14 +113,14 @@ export class RoomManager {
     return result;
   }
 
-  async leave(roomId: string, socketId: string): Promise<string> {
+  async leave(roomId: string, userId: string): Promise<string> {
     const metaKey = `room:${roomId}:meta`;
     const joinOrderKey = `room:${roomId}:join_order`;
     const ttl = 12 * 60 * 60;
     const timestamp = Date.now();
 
     // @ts-ignore - custom command
-    return await this.redis.leaveRoom(metaKey, joinOrderKey, socketId, timestamp, ttl);
+    return await this.redis.leaveRoom(metaKey, joinOrderKey, userId, timestamp, ttl);
   }
 
   async setState(roomId: string, state: { 
@@ -204,28 +204,29 @@ export class RoomManager {
     return rooms.sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
-  async setHost(roomId: string, socketId: string) {
+  async setHost(roomId: string, userId: string) {
     const metaKey = `room:${roomId}:meta`;
-    await this.redis.hset(metaKey, 'host_uid', socketId);
+    await this.redis.hset(metaKey, 'host_uid', userId);
   }
 
-  async updateSocketId(roomId: string, oldSocketId: string, newSocketId: string) {
+  // Not strictly needed anymore since socket ID is decoupled from identity but keeping for safety if used
+  async updateSocketId(roomId: string, oldUserId: string, newUserId: string) {
     const metaKey = `room:${roomId}:meta`;
     const joinOrderKey = `room:${roomId}:join_order`;
     const ttl = 12 * 60 * 60;
 
-    // Check if the old socket is in the join order
-    const score = await this.redis.zscore(joinOrderKey, oldSocketId);
-    if (score !== null) {
-      await this.redis.zrem(joinOrderKey, oldSocketId);
-      await this.redis.zadd(joinOrderKey, score, newSocketId);
+    // Check if the old user is in the join order
+    const score = await this.redis.zscore(joinOrderKey, oldUserId);
+    if (score !== null && oldUserId !== newUserId) {
+      await this.redis.zrem(joinOrderKey, oldUserId);
+      await this.redis.zadd(joinOrderKey, score, newUserId);
       await this.redis.expire(joinOrderKey, ttl);
     }
 
     // Check if it was the host
     const hostUid = await this.redis.hget(metaKey, 'host_uid');
-    if (hostUid === oldSocketId) {
-      await this.redis.hset(metaKey, 'host_uid', newSocketId);
+    if (hostUid === oldUserId && oldUserId !== newUserId) {
+      await this.redis.hset(metaKey, 'host_uid', newUserId);
       await this.redis.expire(metaKey, ttl);
     }
   }

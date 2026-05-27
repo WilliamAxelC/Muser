@@ -45,7 +45,7 @@ const RoomMutationSchema = z.object({
   correlationId: z.string().max(100),
   payload: z.object({
     roomId: z.string().min(1).max(50).regex(/^[a-zA-Z0-9_-]+$/),
-    type: z.enum(['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'BACK', 'QUEUE_REORDER', 'QUEUE_JUMP', 'ROOM_RESYNC', 'QUEUE_ADD', 'QUEUE_REMOVE', 'QUEUE_CLEAR', 'QUEUE_BATCH_APPEND', 'SET_PUBLIC', 'SET_REQUEST_ONLY', 'APPROVE_REQUEST', 'DENY_REQUEST', 'UPDATE_IDENTITY', 'TRANSFER_AUTHORITY', 'QUEUE_PLAYLIST_REQUEST', 'SET_TITLE']),
+    type: z.enum(['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'BACK', 'QUEUE_REORDER', 'QUEUE_JUMP', 'ROOM_RESYNC', 'QUEUE_ADD', 'QUEUE_REMOVE', 'QUEUE_CLEAR', 'QUEUE_BATCH_APPEND', 'SET_PUBLIC', 'SET_REQUEST_ONLY', 'APPROVE_REQUEST', 'DENY_REQUEST', 'UPDATE_IDENTITY', 'TRANSFER_AUTHORITY', 'QUEUE_PLAYLIST_REQUEST', 'SET_TITLE', 'SET_PEER_STATUS']),
     playhead: z.number().min(0).optional(),
     currentTrackId: z.string().length(11).regex(/^[a-zA-Z0-9_-]{11}$/).optional().or(z.literal('')),
     timestamp: z.number(),
@@ -57,9 +57,9 @@ const RoomMutationSchema = z.object({
     isRequestOnly: z.boolean().optional(),
     requestId: z.string().optional(),
     username: z.string().max(50).optional(),
-    targetUserId: z.string().optional(),
     playlistId: z.string().optional(),
-    title: z.string().max(100).optional()
+    title: z.string().max(100).optional(),
+    isDetached: z.boolean().optional()
   })
 });
 
@@ -197,8 +197,16 @@ io.on('connection', async (socket) => {
     return;
   }
 
-  // Deduplication
+  // Deduplication & Stale Socket Eviction
   const existingSockets = await io.in(roomId).fetchSockets();
+  for (const existingSocket of existingSockets) {
+    if (existingSocket.data.userId === userId) {
+      logger.info({ message: '[System] Evicting stale socket for user', userId, stale_socket: existingSocket.id, new_socket: socket.id });
+      existingSocket.disconnect(true);
+    }
+  }
+
+  // Handle username collision for different users
   let baseName = username.replace(/\s\(\d+\)$/, '');
   let suffix = 1;
   while (existingSockets.some(s => s.data.username === username && s.data.userId !== userId)) {
@@ -213,9 +221,20 @@ io.on('connection', async (socket) => {
 
   const broadcastHostChange = async (rId: string, hId: string) => {
     const sockets = await io.in(rId).fetchSockets();
-    const hostSocket = sockets.find(s => s.id === hId);
+    const hostSocket = sockets.find(s => s.data.userId === hId);
     const hostName = hostSocket?.data.username || hId;
     io.to(rId).emit('HOST_CHANGED', { hostId: hId, hostName });
+  };
+
+  const broadcastRosterUpdate = async (rId: string) => {
+    const sockets = await io.in(rId).fetchSockets();
+    const activePeers = sockets.map(s => ({
+      socketId: s.id,
+      userId: s.data.userId?.substring(0, 8) || 'unknown',
+      username: s.data.username,
+      isDetached: s.data.isDetached || false
+    }));
+    io.to(rId).emit('ROSTER_UPDATE', { peers: activePeers });
   };
 
   let isReconnect = false;
@@ -225,7 +244,7 @@ io.on('connection', async (socket) => {
     disconnectTimeouts.delete(userId);
     isReconnect = true;
     logger.info({ message: '[System] Graceful reconnection intercepted', userId, new_socket: socket.id, old_socket: oldSocketId });
-    await roomManager.updateSocketId(roomId, oldSocketId, socket.id);
+    await roomManager.updateSocketId(roomId, userId, userId); // Safe no-op
   }
 
   if (isReconnect) {
@@ -236,7 +255,8 @@ io.on('connection', async (socket) => {
       const activePeers = sockets.map(s => ({
         socketId: s.id,
         userId: s.data.userId?.substring(0, 8) || 'unknown',
-        username: s.data.username
+        username: s.data.username,
+        isDetached: s.data.isDetached || false
       }));
       socket.emit('STATE_SYNC', {
         event: 'STATE_SYNC',
@@ -257,7 +277,7 @@ io.on('connection', async (socket) => {
           peers: activePeers
         }
       });
-      io.to(roomId).emit('HOST_CHANGED', { hostId: state.hostId, hostName: state.hostId === socket.id ? username : undefined });
+      io.to(roomId).emit('HOST_CHANGED', { hostId: state.hostId, hostName: state.hostId === userId ? username : undefined });
     }
   } else {
     roomManager.join(roomId, socket.id, userId, password, roomTitle).then(async (hostId) => {
@@ -274,12 +294,12 @@ io.on('connection', async (socket) => {
     
     // Self-Healing: Verify host is actually alive upon join
     const sockets = await io.in(roomId).fetchSockets();
-    const hostAlive = sockets.some(s => s.id === currentHostId);
+    const hostAlive = sockets.some(s => s.data.userId === currentHostId);
     
-    if (!hostAlive && currentHostId !== socket.id) {
+    if (!hostAlive && currentHostId !== userId) {
       logger.warn({ message: `[Self-Healing] Phantom host ${currentHostId} detected on join. Forcing migration.` });
       const migratedHost = await roomManager.leave(roomId, currentHostId);
-      currentHostId = migratedHost || socket.id;
+      currentHostId = migratedHost || userId;
     }
 
     logger.info({ message: '[Diagnostic] User joined room', socket_id: socket.id, room_id: roomId, user_id: userId, username, host_id: currentHostId, correlation_id });
@@ -290,7 +310,8 @@ io.on('connection', async (socket) => {
       const activePeers = sockets.map(s => ({
         socketId: s.id,
         userId: s.data.userId?.substring(0, 8) || 'unknown',
-        username: s.data.username
+        username: s.data.username,
+        isDetached: s.data.isDetached || false
       }));
 
       socket.emit('STATE_SYNC', {
@@ -312,6 +333,8 @@ io.on('connection', async (socket) => {
           peers: activePeers
         }
       });
+      // Broadcast lightweight roster update to everyone
+      await broadcastRosterUpdate(roomId);
     }
     
     await broadcastHostChange(roomId, currentHostId);
@@ -346,7 +369,7 @@ io.on('connection', async (socket) => {
     let state = await roomManager.getState(mutation.payload.roomId);
     if (state && state.hostId) {
       const sockets = await io.in(mutation.payload.roomId).fetchSockets();
-      const hostAlive = sockets.some(s => s.id === state?.hostId);
+      const hostAlive = sockets.some(s => s.data.userId === state?.hostId);
       
       if (!hostAlive) {
         logger.warn({ message: `[Self-Healing] Phantom host ${state.hostId} dead during mutation. Forcing migration.` });
@@ -362,9 +385,9 @@ io.on('connection', async (socket) => {
     // Authority Check: Playback controls require host authority. Anyone can add tracks (ROOM_RESYNC)
     const hostRequiredActions = ['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'BACK', 'QUEUE_REORDER', 'QUEUE_JUMP'];
     if (hostRequiredActions.includes(mutation.payload.type)) {
-        if (!state || state.hostId !== socket.id) {
+        if (!state || state.hostId !== socket.data.userId) {
             logger.warn({ 
-                message: `[Validation Error] Mutation rejected: Sender ${socket.id} is not the designated room host ${state?.hostId}`,
+                message: `[Validation Error] Mutation rejected: Sender ${socket.data.userId} is not the designated room host ${state?.hostId}`,
                 action: mutation.payload.type
             });
             socket.emit('ERROR', { message: `Permission Denied: Only the room host can perform ${mutation.payload.type}` });
@@ -399,12 +422,16 @@ io.on('connection', async (socket) => {
         title = mutation.payload.title;
     }
 
+    if (mutation.payload.type === 'SET_PEER_STATUS' && mutation.payload.isDetached !== undefined) {
+        socket.data.isDetached = mutation.payload.isDetached;
+    }
+
     if (mutation.payload.type === 'QUEUE_ADD' && mutation.payload.item) {
         const videoId = mutation.payload.item;
         const videoTitle = await resolveVideoTitle(videoId);
         const item = { videoId, title: videoTitle };
 
-        if (isRequestOnly && socket.id !== state?.hostId) {
+        if (isRequestOnly && socket.data.userId !== state?.hostId) {
             // Route to pending requests
             pendingRequests.push({
                 id: `req-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
@@ -632,12 +659,18 @@ io.on('connection', async (socket) => {
       pendingRequests
     });
 
+    if (mutation.payload.type === 'SET_PEER_STATUS') {
+      await broadcastRosterUpdate(mutation.payload.roomId);
+      return; // Do not broadcast a full STATE_SYNC for simple roster updates
+    }
+
     // Broadcast Sync
     const socketsInRoom = await io.in(mutation.payload.roomId).fetchSockets();
     const activePeers = socketsInRoom.map(s => ({
       socketId: s.id,
       userId: s.data.userId?.substring(0, 8) || 'unknown',
-      username: s.data.username
+      username: s.data.username,
+      isDetached: s.data.isDetached || false
     }));
 
     io.to(mutation.payload.roomId).emit('STATE_SYNC', {
@@ -705,11 +738,12 @@ io.on('connection', async (socket) => {
             logger.info({ message: '[System] Room empty, performing garbage collection', room_id: rId });
             await redis.del(`room:${rId}:meta`, `room:${rId}:join_order`);
           } else {
-            const newHostId = await roomManager.leave(rId, socket.id);
+            const newHostId = await roomManager.leave(rId, uId);
             if (newHostId && newHostId !== '') {
-              logger.info({ message: 'Host migrated', room_id: rId, old_host_id: socket.id, new_host_id: newHostId });
+              logger.info({ message: 'Host migrated', room_id: rId, old_host_id: uId, new_host_id: newHostId });
               await broadcastHostChange(rId, newHostId);
             }
+            await broadcastRosterUpdate(rId);
           }
         } catch (err) {
           logger.error({ message: 'Error leaving room', error: err, socket_id: socket.id });
