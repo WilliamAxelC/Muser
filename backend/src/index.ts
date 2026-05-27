@@ -181,6 +181,8 @@ io.use((socket, next) => {
   next();
 });
 
+const disconnectTimeouts = new Map<string, { timeout: NodeJS.Timeout, oldSocketId: string }>();
+
 io.on('connection', async (socket) => {
   const correlation_id = socket.handshake.query.correlationId as string || 'initial';
   const roomId = socket.handshake.query.roomId as string;
@@ -216,7 +218,49 @@ io.on('connection', async (socket) => {
     io.to(rId).emit('HOST_CHANGED', { hostId: hId, hostName });
   };
 
-  roomManager.join(roomId, socket.id, userId, password, roomTitle).then(async (hostId) => {
+  let isReconnect = false;
+  if (disconnectTimeouts.has(userId)) {
+    const { timeout, oldSocketId } = disconnectTimeouts.get(userId)!;
+    clearTimeout(timeout);
+    disconnectTimeouts.delete(userId);
+    isReconnect = true;
+    logger.info({ message: '[System] Graceful reconnection intercepted', userId, new_socket: socket.id, old_socket: oldSocketId });
+    await roomManager.updateSocketId(roomId, oldSocketId, socket.id);
+  }
+
+  if (isReconnect) {
+    // Just sync state without broadasting join
+    const state = await roomManager.getState(roomId);
+    if (state) {
+      const sockets = await io.in(roomId).fetchSockets();
+      const activePeers = sockets.map(s => ({
+        socketId: s.id,
+        userId: s.data.userId?.substring(0, 8) || 'unknown',
+        username: s.data.username
+      }));
+      socket.emit('STATE_SYNC', {
+        event: 'STATE_SYNC',
+        version: 1,
+        correlationId: correlation_id,
+        payload: {
+          roomId,
+          title: state.title,
+          isPlaying: state.isPlaying,
+          currentPlayhead: state.currentPlayhead,
+          currentTrackId: state.currentTrackId,
+          updatedAt: state.updatedAt,
+          queue: state.queue,
+          history: state.history,
+          isPublic: state.isPublic,
+          isRequestOnly: state.isRequestOnly,
+          pendingRequests: state.pendingRequests,
+          peers: activePeers
+        }
+      });
+      io.to(roomId).emit('HOST_CHANGED', { hostId: state.hostId, hostName: state.hostId === socket.id ? username : undefined });
+    }
+  } else {
+    roomManager.join(roomId, socket.id, userId, password, roomTitle).then(async (hostId) => {
     let currentHostId = hostId;
     
     // Announce Join
@@ -615,7 +659,8 @@ io.on('connection', async (socket) => {
         peers: activePeers
       }
     });
-  });
+    });
+  }
 
   socket.on('SEND_MESSAGE', (data) => {
     const result = SendMessageSchema.safeParse(data);
@@ -638,34 +683,40 @@ io.on('connection', async (socket) => {
 
   socket.on('disconnect', async (reason) => {
     const rId = socket.data.roomId;
-    logger.info({ message: 'Socket disconnected', socket_id: socket.id, room_id: rId, reason });
+    const uId = socket.data.userId;
+    logger.info({ message: 'Socket disconnected (initiating grace period)', socket_id: socket.id, room_id: rId, reason });
     rateLimiter.cleanup(socket.id);
 
-    if (rId) {
-      // Announce Leave
-      io.to(rId).emit('ROOM_MESSAGE', {
-        id: `sys-${Date.now()}`,
-        userId: 'system',
-        username: 'System',
-        text: `${socket.data.username} left the room`,
-        timestamp: Date.now()
-      });
+    if (rId && uId) {
+      const timeout = setTimeout(async () => {
+        disconnectTimeouts.delete(uId);
+        // Announce Leave
+        io.to(rId).emit('ROOM_MESSAGE', {
+          id: `sys-${Date.now()}`,
+          userId: 'system',
+          username: 'System',
+          text: `${socket.data.username} left the room`,
+          timestamp: Date.now()
+        });
 
-      try {
-        const sockets = await io.in(rId).fetchSockets();
-        if (sockets.length === 0) {
-          logger.info({ message: '[System] Room empty, performing garbage collection', room_id: rId });
-          await redis.del(`room:${rId}:meta`, `room:${rId}:join_order`);
-        } else {
-          const newHostId = await roomManager.leave(rId, socket.id);
-          if (newHostId && newHostId !== '') {
-            logger.info({ message: 'Host migrated', room_id: rId, old_host_id: socket.id, new_host_id: newHostId });
-            await broadcastHostChange(rId, newHostId);
+        try {
+          const sockets = await io.in(rId).fetchSockets();
+          if (sockets.length === 0) {
+            logger.info({ message: '[System] Room empty, performing garbage collection', room_id: rId });
+            await redis.del(`room:${rId}:meta`, `room:${rId}:join_order`);
+          } else {
+            const newHostId = await roomManager.leave(rId, socket.id);
+            if (newHostId && newHostId !== '') {
+              logger.info({ message: 'Host migrated', room_id: rId, old_host_id: socket.id, new_host_id: newHostId });
+              await broadcastHostChange(rId, newHostId);
+            }
           }
+        } catch (err) {
+          logger.error({ message: 'Error leaving room', error: err, socket_id: socket.id });
         }
-      } catch (err) {
-        logger.error({ message: 'Error leaving room', error: err, socket_id: socket.id });
-      }
+      }, 15000); // 15-second grace window
+
+      disconnectTimeouts.set(uId, { timeout, oldSocketId: socket.id });
     }
   });
 });

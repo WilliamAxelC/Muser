@@ -48,6 +48,18 @@ function App() {
     }
   }, [errorToast]);
 
+  // Phase 3.2: Active Tab Eviction Guard
+  React.useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (activeRoomId) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [activeRoomId]);
+
   const handleCopyLink = () => {
     const link = `${window.location.origin}/room/${activeRoomId?.toLowerCase()}`;
     navigator.clipboard.writeText(link);
@@ -127,6 +139,7 @@ function App() {
   };
 
   const handlePlayerStateChange = (state: { isPlaying: boolean; playhead: number; isEnded?: boolean }) => {
+    if (isUnsynced) return;
     if (state.isEnded) {
       emitMutation('SKIP');
     } else {
@@ -344,28 +357,52 @@ function App() {
               <MediaIngestionForm onIngest={handleIngest} />
             </div>
 
-            <div className="flex flex-col items-center gap-8 w-full max-w-2xl">
-              <div className="flex items-center gap-6 md:gap-8">
-                <button onClick={() => emitMutation('BACK')} disabled={(!isHost && !isUnsynced) || (roomState?.history?.length || 0) === 0} className="p-4 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-600 transition-all hover:scale-105 active:scale-90 disabled:opacity-20 disabled:pointer-events-none" title="Previous Track">
-                  <RotateCcw className="w-6 h-6" />
-                </button>                  
-                <button onClick={() => { const isPlaying = roomState?.isPlaying; const playhead = ytPlayerRef.current?.getCurrentTime() || roomState?.currentPlayhead || 0; emitMutation(isPlaying ? 'PAUSE' : 'PLAY', { playhead }); }} disabled={(!isHost && !isUnsynced) || (!roomState?.currentTrackId && (roomState?.queue?.length || 0) === 0)} className={cn( "w-20 h-20 flex items-center justify-center rounded-[2rem] transition-all hover:scale-105 active:scale-95 shadow-2xl disabled:opacity-20 disabled:grayscale disabled:cursor-not-allowed", roomState?.isPlaying ? "bg-zinc-900 border border-zinc-800 text-white" : "bg-white text-black" )} >
-                  {roomState?.isPlaying ? <Pause className="w-9 h-9 fill-current" /> : <Play className="w-9 h-9 fill-current ml-1" />}
-                </button>
-                <button onClick={() => emitMutation('SKIP')} disabled={(!isHost && !isUnsynced) || (roomState?.queue?.length || 0) === 0} className="p-4 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-600 transition-all hover:scale-105 active:scale-90 disabled:opacity-20 disabled:grayscale disabled:cursor-not-allowed" title="Skip Track">
-                  <SkipForward className="w-6 h-6 fill-current" />
-                </button>
-              </div>
-
-              <div className="w-full max-w-md flex items-center justify-between gap-4 px-4 md:px-6 py-4 bg-zinc-900/50 rounded-3xl border border-zinc-800/50 backdrop-blur-md">
-                 {/* DIV Group A: Left Aligned Controls — Volume Button, Slider, Level */}
-                 <div className="flex items-center gap-3 min-w-[160px]">
+            <div className="flex flex-col items-center gap-8 w-full max-w-3xl">
+              <div className="w-full flex items-center justify-between gap-4 px-4 md:px-6 py-4 bg-zinc-900/50 rounded-3xl border border-zinc-800/50 backdrop-blur-md">
+                 {/* Container Block 1 (Left - Volume Grouping) */}
+                 <div className="flex items-center gap-2 w-44 flex-shrink-0">
                    <div className="p-2 rounded-lg bg-zinc-800/50 flex-shrink-0"> <VolumeX className="w-4 h-4 text-zinc-400" /> </div>
                    <input type="range" min="0" max="100" value={volume} onChange={(e) => setVolume(parseInt(e.target.value))} className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-white" />
-                   <span className="text-[10px] font-mono font-bold text-zinc-400 w-8 flex-shrink-0 text-right">{volume}</span>
+                   <div className="w-8 text-right font-mono text-xs"><span className="font-bold text-zinc-400">{volume}</span></div>
                  </div>
 
-                 {/* DIV Group B: Right Aligned Controls — Sync Badge, Data Saver Toggle */}
+                 {/* Container Block 2 (Center - Navigation Cushion) */}
+                 <div className="flex-1 flex items-center justify-center gap-4 md:gap-8">
+                   <button onClick={() => {
+                     if (isUnsynced) {
+                       ytPlayerRef.current?.seekTo(0);
+                     } else {
+                       emitMutation('BACK');
+                     }
+                   }} disabled={(!isHost && !isUnsynced) || (roomState?.history?.length || 0) === 0} className="p-3 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-600 transition-all hover:scale-105 active:scale-90 disabled:opacity-20 disabled:pointer-events-none" title="Previous Track">
+                     <RotateCcw className="w-5 h-5" />
+                   </button>                  
+                   <button onClick={() => { 
+                     const isPlaying = roomState?.isPlaying; 
+                     const playhead = ytPlayerRef.current?.getCurrentTime() || roomState?.currentPlayhead || 0; 
+                     if (isUnsynced) {
+                       const playerState = (ytPlayerRef.current as any)?.getPlayerState?.();
+                       if (playerState === 1) ytPlayerRef.current?.pauseVideo();
+                       else ytPlayerRef.current?.playVideo();
+                     } else {
+                       emitMutation(isPlaying ? 'PAUSE' : 'PLAY', { playhead }); 
+                     }
+                   }} disabled={(!isHost && !isUnsynced) || (!roomState?.currentTrackId && (roomState?.queue?.length || 0) === 0)} className={cn( "w-16 h-16 flex items-center justify-center rounded-[2rem] transition-all hover:scale-105 active:scale-95 shadow-2xl disabled:opacity-20 disabled:grayscale disabled:cursor-not-allowed", roomState?.isPlaying ? "bg-zinc-900 border border-zinc-800 text-white" : "bg-white text-black" )} >
+                     {roomState?.isPlaying ? <Pause className="w-7 h-7 fill-current" /> : <Play className="w-7 h-7 fill-current ml-1" />}
+                   </button>
+                   <button onClick={() => {
+                     if (isUnsynced) {
+                       const duration = (ytPlayerRef.current as any)?.getDuration?.() || 0;
+                       ytPlayerRef.current?.seekTo(duration);
+                     } else {
+                       emitMutation('SKIP');
+                     }
+                   }} disabled={(!isHost && !isUnsynced) || (roomState?.queue?.length || 0) === 0} className="p-3 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-600 transition-all hover:scale-105 active:scale-90 disabled:opacity-20 disabled:grayscale disabled:cursor-not-allowed" title="Skip Track">
+                     <SkipForward className="w-5 h-5 fill-current" />
+                   </button>
+                 </div>
+
+                 {/* Container Block 3 (Right - Mode Toggles Grouping) */}
                  <div className="flex items-center gap-4 ml-auto flex-shrink-0">
                     {!isHost && (
                       <button onClick={() => setIsUnsynced(!isUnsynced)} className={cn("flex items-center gap-2 px-3 py-2 rounded-xl border transition-all flex-shrink-0", isUnsynced ? "bg-orange-500/10 border-orange-500/50 text-orange-400" : "bg-zinc-800/50 border-zinc-700/50 text-zinc-500")} title="Bypass Master Sync">
