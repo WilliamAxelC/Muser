@@ -75,7 +75,7 @@ function App() {
     }
   }, [activeRoomId]);
 
-  const { isConnected, roomState, hostId, isHost, emitMutation, messages, sendMessage } = useSocket(activeRoomId, userId, username, roomPassword, roomTitleInput);
+  const { isConnected, roomState, isHost, emitMutation, messages, sendMessage } = useSocket(activeRoomId, userId, username, roomPassword, roomTitleInput);
   const ytPlayerRef = useRef<YouTubePlayerRef>(null);
 
   const [detachedQueue, setDetachedQueue] = useState<{ videoId: string; title: string }[]>([]);
