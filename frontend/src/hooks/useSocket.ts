@@ -35,7 +35,7 @@ interface StateSync {
   hostUserId?: string;
 }
 
-export function useSocket(roomId: string | null, userId: string, username: string, password?: string, title?: string, isUnsynced: boolean = false) {
+export function useSocket(roomId: string | null, userId: string, username: string, password?: string, title?: string, isUnsynced: boolean = false, onRoomClosed?: (message: string) => void) {
   const [isConnected, setIsConnected] = useState(false);
   const [roomState, setRoomState] = useState<StateSync | null>(null);
   const [hostId, setHostId] = useState<string | null>(null);
@@ -100,6 +100,13 @@ export function useSocket(roomId: string | null, userId: string, username: strin
       setMessages((prev) => [...prev, message]);
     });
 
+    socket.on('ROOM_CLOSED', (data: any) => {
+      console.log('[Diagnostic] Received ROOM_CLOSED from server:', data.message);
+      if (onRoomClosed) {
+        onRoomClosed(data.message);
+      }
+    });
+
     socket.on('ERROR', (data: any) => {
       console.error('[Diagnostic] Received ERROR from server:', data.message);
       // For immediate visibility to the user
@@ -111,7 +118,7 @@ export function useSocket(roomId: string | null, userId: string, username: strin
       socket.disconnect();
       setMessages([]);
     };
-  }, [roomId, userId, username, title]);
+  }, [roomId, userId, username, title, onRoomClosed]);
 
   const emitMutation = useCallback((type: string, payload: any = {}) => {
     if (!socketRef.current || !roomId) {

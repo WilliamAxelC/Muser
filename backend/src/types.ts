@@ -19,6 +19,7 @@ export interface ServerToClientEvents {
   ERROR: (data: { message: string }) => void;
   ROOM_MESSAGE: (data: ChatMessage) => void;
   ROSTER_UPDATE: (data: { peers: { socketId: string; userId: string; username: string; isDetached?: boolean }[] }) => void;
+  ROOM_CLOSED: (data: { message: string }) => void;
 }
 
 export interface InterServerEvents {}
