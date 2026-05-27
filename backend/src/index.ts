@@ -455,7 +455,7 @@ io.on('connection', async (socket) => {
     }
     
     if (mutation.payload.type === 'APPROVE_REQUEST' && mutation.payload.requestId) {
-        if (socket.id === state?.hostId) {
+        if (socket.data.userId === state?.hostId) {
             const reqIndex = pendingRequests.findIndex((r: any) => r.id === mutation.payload.requestId);
             if (reqIndex !== -1) {
                 const req = pendingRequests.splice(reqIndex, 1)[0];
@@ -465,7 +465,7 @@ io.on('connection', async (socket) => {
     }
     
     if (mutation.payload.type === 'DENY_REQUEST' && mutation.payload.requestId) {
-        if (socket.id === state?.hostId) {
+        if (socket.data.userId === state?.hostId) {
             const reqIndex = pendingRequests.findIndex((r: any) => r.id === mutation.payload.requestId);
             if (reqIndex !== -1) {
                 pendingRequests.splice(reqIndex, 1);

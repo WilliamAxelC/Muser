@@ -34,12 +34,14 @@ interface QueueViewProps {
   pendingRequests?: PendingRequest[];
   onApprove?: (id: string) => void;
   onDeny?: (id: string) => void;
+  localUserId?: string;
+  hostUserId?: string;
 }
 
 export const QueueView: React.FC<QueueViewProps> = ({ 
   queue, detachedQueue, isUnsynced, history = [], isHost, onReorder, onLocalReorder, onRemove, onLocalRemove, onJump, onLocalJump,
   isRequestOnly, onToggleRequestOnly, 
-  pendingRequests = [], onApprove, onDeny 
+  pendingRequests = [], onApprove, onDeny, localUserId, hostUserId 
 }) => {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'queue' | 'pending' | 'history'>('queue');
@@ -215,7 +217,7 @@ export const QueueView: React.FC<QueueViewProps> = ({
                       </div>
                       <span className="text-[10px] text-zinc-500 mt-1">Requested by <span className="text-zinc-400">{req.username}</span></span>
                     </div>
-                    {isHost && (
+                    {(localUserId && hostUserId && localUserId === hostUserId) && (
                       <div className="flex items-center gap-1 shrink-0">
                         <button
                           onClick={() => onApprove?.(req.id)}
