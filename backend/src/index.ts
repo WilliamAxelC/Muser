@@ -4,6 +4,7 @@ import { Server } from 'socket.io';
 import Redis from 'ioredis';
 import dotenv from 'dotenv';
 import { z } from 'zod';
+import ytpl from 'ytpl';
 import logger from './logger';
 import { RoomManager } from './room-manager';
 import { RateLimiter } from './rate-limiter';
@@ -77,6 +78,18 @@ app.get('/api/rooms', async (req, res) => {
   } catch (err) {
     logger.error({ message: 'Failed to fetch public rooms', error: err });
     res.status(500).json({ error: 'Failed to fetch public rooms' });
+  }
+});
+
+app.get('/api/playlist/:id', async (req, res) => {
+  const playlistId = req.params.id;
+  try {
+    const playlist = await ytpl(playlistId, { limit: 100 });
+    const items = playlist.items.map(item => item.id);
+    res.json({ items });
+  } catch (err) {
+    logger.error({ message: 'Failed to fetch playlist', error: err, playlistId });
+    res.status(500).json({ error: 'Failed to fetch playlist' });
   }
 });
 

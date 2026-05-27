@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { cn } from '../lib/utils';
 import type { ChatMessage } from '../hooks/useSocket';
 
 interface ChatViewProps {
@@ -36,14 +37,33 @@ export const ChatView: React.FC<ChatViewProps> = ({ messages, onSendMessage, cur
         {messages.length === 0 ? (
           <div className="text-center text-zinc-600 text-sm mt-4">No messages yet. Say hi!</div>
         ) : (
-          messages.map((msg) => (
-            <div key={msg.id} className={`flex flex-col ${msg.userId === currentUserId ? 'items-end' : 'items-start'}`}>
-              <div className="text-[10px] text-zinc-500 mb-1">{msg.username}</div>
-              <div className={`px-4 py-2 rounded-2xl max-w-[80%] text-sm ${msg.userId === currentUserId ? 'bg-blue-600 text-white rounded-br-none' : 'bg-zinc-800 text-zinc-200 rounded-bl-none'}`}>
-                {msg.text}
+          messages.map((msg) => {
+            const isSystem = msg.userId === 'system' || msg.username === 'System';
+            
+            if (isSystem) {
+              return (
+                <div key={msg.id} className="flex justify-center py-2">
+                  <div className="text-[10px] font-bold text-zinc-600 uppercase tracking-[0.2em] bg-zinc-800/30 px-4 py-1 rounded-full border border-zinc-800/50">
+                    --- {msg.text} ---
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div key={msg.id} className={`flex flex-col ${msg.userId === currentUserId ? 'items-end' : 'items-start'}`}>
+                <div className="text-[10px] text-zinc-500 mb-1 font-bold tracking-tight px-1">{msg.username}</div>
+                <div className={cn(
+                  "px-4 py-2 rounded-2xl max-w-[85%] text-sm break-words shadow-sm",
+                  msg.userId === currentUserId 
+                    ? 'bg-blue-600 text-white rounded-br-none shadow-blue-900/20' 
+                    : 'bg-zinc-800 text-zinc-200 rounded-bl-none shadow-black/20'
+                )}>
+                  {msg.text}
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
         <div ref={messagesEndRef} />
       </div>
