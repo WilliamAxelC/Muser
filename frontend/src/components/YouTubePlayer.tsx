@@ -204,7 +204,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(({
         ref={containerRef} 
         className={cn(
           "w-full h-full transition-opacity duration-500",
-          dataSaver ? "absolute -left-[9999px] w-1 h-1 opacity-0" : "opacity-100"
+          dataSaver ? "absolute -left-[9999px] w-[640px] h-[360px] opacity-0" : "opacity-100"
         )} 
       />
     </div>

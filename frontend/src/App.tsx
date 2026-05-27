@@ -78,9 +78,20 @@ function App() {
   const { isConnected, roomState, hostId, isHost, emitMutation, messages, sendMessage } = useSocket(activeRoomId, userId, username, roomPassword, roomTitleInput);
   const ytPlayerRef = useRef<YouTubePlayerRef>(null);
 
-  // Phase 1.2: Immediate catch-up re-synchronization on DETACHED → SYNCED transition
+  const [detachedQueue, setDetachedQueue] = useState<{ videoId: string; title: string }[]>([]);
+  const [detachedCurrentTrackId, setDetachedCurrentTrackId] = useState<string | null>(null);
+  const [detachedIsPlaying, setDetachedIsPlaying] = useState(false);
+  const [showWarningBanner, setShowWarningBanner] = useState(false);
+
+  // Phase 1: Local Session State Buckets & Catch-up re-synchronization
   useEffect(() => {
-    if (prevUnsyncedRef.current === true && isUnsynced === false) {
+    if (isUnsynced && !prevUnsyncedRef.current) {
+      // User just toggled to DETACHED - fork state
+      setDetachedQueue([...(roomState?.queue || [])]);
+      setDetachedCurrentTrackId(roomState?.currentTrackId || null);
+      setDetachedIsPlaying(roomState?.isPlaying || false);
+      setShowWarningBanner(true);
+    } else if (prevUnsyncedRef.current === true && isUnsynced === false) {
       // User just toggled back to SYNCED - snap to master timeline
       if (roomState && ytPlayerRef.current) {
         const networkDriftOffset = (Date.now() - (roomState.updatedAt || Date.now())) / 1000;
@@ -94,6 +105,9 @@ function App() {
           console.error('[Re-Sync] Failed to snap playhead on re-sync', err);
         }
       }
+    }
+    if (prevUnsyncedRef.current !== isUnsynced) {
+      emitMutation('SET_PEER_STATUS', { isDetached: isUnsynced });
     }
     prevUnsyncedRef.current = isUnsynced;
   }, [isUnsynced, roomState, emitMutation]);
@@ -118,7 +132,21 @@ function App() {
 
       if (listMatch) {
         const playlistId = listMatch[1];
-        emitMutation('QUEUE_PLAYLIST_REQUEST', { playlistId });
+        if (isUnsynced) {
+          try {
+            const res = await fetch(`http://localhost:8080/api/playlist?id=${playlistId}`);
+            if (res.ok) {
+              const data = await res.json();
+              setDetachedQueue((prev) => [...prev, ...data.items.map((i: any) => ({ videoId: i.id, title: i.title }))]);
+            } else {
+              throw new Error('Failed to unroll playlist locally');
+            }
+          } catch (e: any) {
+            setErrorToast(e.message || 'Error fetching playlist');
+          }
+        } else {
+          emitMutation('QUEUE_PLAYLIST_REQUEST', { playlistId });
+        }
         return;
       }
 
@@ -128,7 +156,11 @@ function App() {
       const videoId = match ? match[1] : (input.length === 11 ? input : null);
       
       if (videoId) {
-        emitMutation('QUEUE_ADD', { item: videoId });
+        if (isUnsynced) {
+          setDetachedQueue((prev) => [...prev, { videoId, title: 'Local Track' }]);
+        } else {
+          emitMutation('QUEUE_ADD', { item: videoId });
+        }
       } else {
         throw new Error('Invalid Media Link or ID');
       }
@@ -205,10 +237,10 @@ function App() {
               <div className="bg-zinc-900/30 border border-zinc-800/80 p-8 rounded-3xl shadow-2xl backdrop-blur-md space-y-6 h-full">
                 <div className="flex items-center gap-3">
                   <Users className="w-4 h-4 text-blue-500" />
-                  <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">Global Identity</h3>
+                  <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">Profile</h3>
                 </div>
                 <div className="space-y-2">
-                  <label htmlFor="username" className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest ml-1">Handle</label>
+                  <label htmlFor="username" className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest ml-1">Display Name</label>
                   <input id="username" type="text" value={username} onChange={(e) => handleNameChange(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800/50 rounded-2xl px-6 py-4 text-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-900/50 transition-all placeholder:text-zinc-800 text-white" />
                 </div>
                 <p className="text-[10px] text-zinc-600 font-medium leading-relaxed">Your identity is persisted locally and broadcast to all connected peer nodes in real-time.</p>
@@ -222,7 +254,7 @@ function App() {
                 <div className="bg-zinc-900/30 border border-zinc-800/80 p-8 rounded-3xl shadow-2xl backdrop-blur-md space-y-8 flex flex-col">
                   <div className="flex items-center gap-3">
                     <Globe className="w-4 h-4 text-emerald-500" />
-                    <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">Room Provisioning</h3>
+                    <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">Create New Room</h3>
                   </div>
                   
                   <div className="space-y-6 flex-1">
@@ -242,33 +274,33 @@ function App() {
                     </div>
 
                     <div className="space-y-2">
-                      <label htmlFor="create-password" className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest ml-1">Access Token (Optional)</label>
+                      <label htmlFor="create-password" className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest ml-1">Room Password (Optional)</label>
                       <input id="create-password" type="password" placeholder="••••••••" value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800/50 rounded-2xl px-6 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-900/50 transition-all placeholder:text-zinc-800 text-white" />
                     </div>
                   </div>
 
-                  <button onClick={handleCreateRoom} className="w-full bg-white text-black font-black py-5 rounded-[1.5rem] hover:bg-zinc-200 active:scale-[0.98] transition-all shadow-xl uppercase tracking-widest text-xs mt-6">Initialize Node</button>
+                  <button onClick={handleCreateRoom} className="w-full bg-white text-black font-black py-5 rounded-[1.5rem] hover:bg-zinc-200 active:scale-[0.98] transition-all shadow-xl uppercase tracking-widest text-xs mt-6">Create Room</button>
                 </div>
 
                 {/* Card C: Port Ingress (Join) */}
                 <div className="bg-zinc-900/30 border border-zinc-800/80 p-8 rounded-3xl shadow-2xl backdrop-blur-md space-y-8 flex flex-col">
                   <div className="flex items-center gap-3">
                     <Link2 className="w-4 h-4 text-blue-500" />
-                    <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">Inbound Ingress</h3>
+                    <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">Join Existing Room</h3>
                   </div>
 
                   <form onSubmit={handleJoin} className="space-y-6 flex-1 flex flex-col">
                     <div className="space-y-2">
-                       <label htmlFor="room-id" className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest ml-1">Room Index</label>
+                       <label htmlFor="room-id" className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest ml-1">Room Code</label>
                        <input id="room-id" type="text" placeholder="CODE" value={inputRoomId} onChange={(e) => setInputRoomId(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800/50 rounded-2xl px-6 py-4 font-mono tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-blue-900/50 transition-all placeholder:text-zinc-800 uppercase text-white" />
                     </div>
                     
                     <div className="space-y-2 flex-1">
-                       <label className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest ml-1">Validation Token</label>
+                       <label className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest ml-1">Room Password</label>
                        <input type="password" placeholder="••••••••" value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800/50 rounded-2xl px-6 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-900/50 transition-all placeholder:text-zinc-800 text-white" />
                     </div>
                     
-                    <button type="submit" className="w-full bg-blue-600 text-white font-black py-5 rounded-[1.5rem] hover:bg-blue-500 active:scale-[0.98] transition-all shadow-xl uppercase tracking-widest text-xs mt-6">Secure Access</button>
+                    <button type="submit" className="w-full bg-blue-600 text-white font-black py-5 rounded-[1.5rem] hover:bg-blue-500 active:scale-[0.98] transition-all shadow-xl uppercase tracking-widest text-xs mt-6">Join Room</button>
                   </form>
                 </div>
               </div>
@@ -276,7 +308,7 @@ function App() {
           </div>
           
           <div className="space-y-6 pt-8 border-t border-zinc-900">
-            <h3 className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.3em] text-center">Distributed Registry</h3>
+            <h3 className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.3em] text-center">Public Rooms</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                {publicRooms.length === 0 ? ( 
                  <div className="md:col-span-2 lg:col-span-3 text-zinc-800 text-[10px] font-black uppercase text-center py-12 tracking-widest bg-zinc-900/10 rounded-3xl border border-dashed border-zinc-900">No active public nodes</div> 
@@ -297,6 +329,9 @@ function App() {
       </div>
     );
   }
+  const activeTrackId = isUnsynced ? detachedCurrentTrackId : roomState?.currentTrackId;
+  const activePlaybackState = isUnsynced ? detachedIsPlaying : roomState?.isPlaying;
+  const activeQueue = isUnsynced ? detachedQueue : (roomState?.queue || []);
 
   return (
     <div className="h-screen flex flex-col bg-black text-white overflow-hidden relative">
@@ -341,10 +376,20 @@ function App() {
 
       <div className="flex-1 flex min-h-0 relative">
         <main className="flex-1 flex flex-col min-w-0 bg-black relative">
+          {isUnsynced && showWarningBanner && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-4xl bg-amber-950/40 border border-amber-500/30 text-amber-400 p-4 rounded-2xl flex justify-between items-center text-xs font-medium backdrop-blur-md transition-all animate-in fade-in slide-in-from-top-2">
+              <div className="flex items-center gap-3">
+                <span>⚠️ Independent Session Mode: You are currently detached from the Room Master. Playback controls, media additions, and queue progressions are isolated locally.</span>
+              </div>
+              <button onClick={() => setShowWarningBanner(false)} className="ml-4 hover:bg-amber-900/50 p-1 rounded-lg transition-all shrink-0">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
           <div className="flex-1 flex flex-col items-center justify-center p-4 md:p-8 space-y-8 overflow-y-auto">
             <div className="w-full max-w-4xl aspect-video bg-zinc-900 rounded-[2rem] border border-zinc-800 shadow-2xl relative overflow-hidden group">
-              {roomState?.currentTrackId ? (
-                <YouTubePlayer ref={ytPlayerRef} key={roomState.currentTrackId} videoId={roomState.currentTrackId} isPlaying={roomState.isPlaying} targetPlayhead={roomState.currentPlayhead} isHost={isHost} onStateChange={handlePlayerStateChange} updatedAt={roomState.updatedAt} volume={volume} dataSaver={dataSaver} muted={audioMode === 'passive'} isUnsynced={isUnsynced} />
+              {activeTrackId ? (
+                <YouTubePlayer ref={ytPlayerRef} key={activeTrackId} videoId={activeTrackId} isPlaying={activePlaybackState ?? false} targetPlayhead={roomState?.currentPlayhead || 0} isHost={isHost} onStateChange={handlePlayerStateChange} updatedAt={roomState?.updatedAt || Date.now()} volume={volume} dataSaver={dataSaver} muted={audioMode === 'passive'} isUnsynced={isUnsynced} />
               ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center space-y-6">
                   <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center animate-pulse"> <Radio className="w-8 h-8 text-zinc-600" /> </div>
@@ -363,7 +408,7 @@ function App() {
                  <div className="flex items-center gap-2 w-44 flex-shrink-0">
                    <div className="p-2 rounded-lg bg-zinc-800/50 flex-shrink-0"> <VolumeX className="w-4 h-4 text-zinc-400" /> </div>
                    <input type="range" min="0" max="100" value={volume} onChange={(e) => setVolume(parseInt(e.target.value))} className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-white" />
-                   <div className="w-8 text-right font-mono text-xs"><span className="font-bold text-zinc-400">{volume}</span></div>
+                   <div className="w-12 text-right font-mono text-xs"><span className="font-bold text-zinc-400">{volume}</span></div>
                  </div>
 
                  {/* Container Block 2 (Center - Navigation Cushion) */}
@@ -374,30 +419,37 @@ function App() {
                      } else {
                        emitMutation('BACK');
                      }
-                   }} disabled={(!isHost && !isUnsynced) || (roomState?.history?.length || 0) === 0} className="p-3 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-600 transition-all hover:scale-105 active:scale-90 disabled:opacity-20 disabled:pointer-events-none" title="Previous Track">
+                   }} disabled={(!isHost && !isUnsynced) || (!isUnsynced && (roomState?.history?.length || 0) === 0)} className="p-3 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-600 transition-all hover:scale-105 active:scale-90 disabled:opacity-20 disabled:pointer-events-none" title="Previous Track">
                      <RotateCcw className="w-5 h-5" />
                    </button>                  
                    <button onClick={() => { 
-                     const isPlaying = roomState?.isPlaying; 
-                     const playhead = ytPlayerRef.current?.getCurrentTime() || roomState?.currentPlayhead || 0; 
+                     const isPlaying = activePlaybackState; 
                      if (isUnsynced) {
-                       const playerState = (ytPlayerRef.current as any)?.getPlayerState?.();
-                       if (playerState === 1) ytPlayerRef.current?.pauseVideo();
+                       if (isPlaying) ytPlayerRef.current?.pauseVideo();
                        else ytPlayerRef.current?.playVideo();
+                       setDetachedIsPlaying(!isPlaying);
                      } else {
+                       const playhead = ytPlayerRef.current?.getCurrentTime() || roomState?.currentPlayhead || 0; 
                        emitMutation(isPlaying ? 'PAUSE' : 'PLAY', { playhead }); 
                      }
-                   }} disabled={(!isHost && !isUnsynced) || (!roomState?.currentTrackId && (roomState?.queue?.length || 0) === 0)} className={cn( "w-16 h-16 flex items-center justify-center rounded-[2rem] transition-all hover:scale-105 active:scale-95 shadow-2xl disabled:opacity-20 disabled:grayscale disabled:cursor-not-allowed", roomState?.isPlaying ? "bg-zinc-900 border border-zinc-800 text-white" : "bg-white text-black" )} >
-                     {roomState?.isPlaying ? <Pause className="w-7 h-7 fill-current" /> : <Play className="w-7 h-7 fill-current ml-1" />}
+                   }} disabled={(!isHost && !isUnsynced) || (!activeTrackId && activeQueue.length === 0)} className={cn( "w-16 h-16 flex items-center justify-center rounded-[2rem] transition-all hover:scale-105 active:scale-95 shadow-2xl disabled:opacity-20 disabled:grayscale disabled:cursor-not-allowed", activePlaybackState ? "bg-zinc-900 border border-zinc-800 text-white" : "bg-white text-black" )} >
+                     {activePlaybackState ? <Pause className="w-7 h-7 fill-current" /> : <Play className="w-7 h-7 fill-current ml-1" />}
                    </button>
                    <button onClick={() => {
                      if (isUnsynced) {
-                       const duration = (ytPlayerRef.current as any)?.getDuration?.() || 0;
-                       ytPlayerRef.current?.seekTo(duration);
+                       if (detachedQueue.length > 0) {
+                         const nextItem = detachedQueue[0];
+                         setDetachedQueue(detachedQueue.slice(1));
+                         setDetachedCurrentTrackId(nextItem.videoId);
+                         setDetachedIsPlaying(true);
+                       } else {
+                         setDetachedCurrentTrackId(null);
+                         setDetachedIsPlaying(false);
+                       }
                      } else {
                        emitMutation('SKIP');
                      }
-                   }} disabled={(!isHost && !isUnsynced) || (roomState?.queue?.length || 0) === 0} className="p-3 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-600 transition-all hover:scale-105 active:scale-90 disabled:opacity-20 disabled:grayscale disabled:cursor-not-allowed" title="Skip Track">
+                   }} disabled={(!isHost && !isUnsynced) || activeQueue.length === 0} className="p-3 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-600 transition-all hover:scale-105 active:scale-90 disabled:opacity-20 disabled:grayscale disabled:cursor-not-allowed" title="Skip Track">
                      <SkipForward className="w-5 h-5 fill-current" />
                    </button>
                  </div>
@@ -432,7 +484,7 @@ function App() {
             <button onClick={() => setMobileTab('queue')} className={cn( "flex-1 py-4 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] transition-all", mobileTab === 'queue' ? "text-white border-b-2 border-white" : "text-zinc-600 hover:text-zinc-400" )}> <ListMusic className="w-3 h-3" /> Media Queue {roomState?.queue && roomState.queue.length > 0 && ( <span className="bg-blue-600 text-[8px] px-1.5 py-0.5 rounded-full ml-1">{roomState.queue.length}</span> )} </button>
           </div>
           <div className="flex-1 min-h-0">
-            {mobileTab === 'chat' ? ( <ChatView messages={messages} onSendMessage={sendMessage} currentUserId={userId} /> ) : ( <QueueView queue={roomState?.queue || []} history={roomState?.history || []} isHost={isHost} onReorder={(oldIndex, newIndex) => emitMutation('QUEUE_REORDER', { index: oldIndex, newIndex })} onRemove={(index) => emitMutation('QUEUE_REMOVE', { index })} onJump={(index) => emitMutation('QUEUE_JUMP', { index })} isRequestOnly={roomState?.isRequestOnly} onToggleRequestOnly={(val) => emitMutation('SET_REQUEST_ONLY', { isRequestOnly: val })} pendingRequests={roomState?.pendingRequests} onApprove={(id) => emitMutation('APPROVE_REQUEST', { requestId: id })} onDeny={(id) => emitMutation('DENY_REQUEST', { requestId: id })} /> )}
+            {mobileTab === 'chat' ? ( <ChatView messages={messages} onSendMessage={sendMessage} currentUserId={userId} /> ) : ( <QueueView queue={roomState?.queue || []} detachedQueue={detachedQueue} isUnsynced={isUnsynced} history={roomState?.history || []} isHost={isHost} onReorder={(oldIndex, newIndex) => emitMutation('QUEUE_REORDER', { index: oldIndex, newIndex })} onLocalReorder={(oldIndex, newIndex) => { const newQ = [...detachedQueue]; const [item] = newQ.splice(oldIndex, 1); newQ.splice(newIndex, 0, item); setDetachedQueue(newQ); }} onRemove={(index) => emitMutation('QUEUE_REMOVE', { index })} onLocalRemove={(index) => { const newQ = [...detachedQueue]; newQ.splice(index, 1); setDetachedQueue(newQ); }} onJump={(index) => emitMutation('QUEUE_JUMP', { index })} onLocalJump={(index) => { if (index < detachedQueue.length) { const item = detachedQueue[index]; setDetachedQueue(detachedQueue.slice(index + 1)); setDetachedCurrentTrackId(item.videoId); setDetachedIsPlaying(true); } }} isRequestOnly={roomState?.isRequestOnly} onToggleRequestOnly={(val) => emitMutation('SET_REQUEST_ONLY', { isRequestOnly: val })} pendingRequests={roomState?.pendingRequests} onApprove={(id) => emitMutation('APPROVE_REQUEST', { requestId: id })} onDeny={(id) => emitMutation('DENY_REQUEST', { requestId: id })} /> )}
           </div>
         </aside>
 
@@ -448,7 +500,12 @@ function App() {
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-bold text-white shrink-0"> {peer.username[0]?.toUpperCase() || '?'} </div>
                       <div className="flex flex-col min-w-0">
-                        <span className="text-xs font-bold truncate"> {peer.username} {peer.userId === userId.substring(0,8) && " (You)"} </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold truncate"> {peer.username} {peer.userId === userId.substring(0,8) && " (You)"} </span>
+                          {peer.isDetached && (
+                            <span className="text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider">Detached</span>
+                          )}
+                        </div>
                         <span className="text-[9px] text-zinc-600 font-mono">ID: {peer.userId}</span>
                       </div>
                     </div>

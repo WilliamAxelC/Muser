@@ -18,6 +18,7 @@ export interface ServerToClientEvents {
   HOST_CHANGED: (data: { hostId: string, hostName?: string }) => void;
   ERROR: (data: { message: string }) => void;
   ROOM_MESSAGE: (data: ChatMessage) => void;
+  ROSTER_UPDATE: (data: { peers: { socketId: string; userId: string; username: string; isDetached?: boolean }[] }) => void;
 }
 
 export interface InterServerEvents {}
@@ -26,6 +27,7 @@ export interface SocketData {
   userId: string;
   username: string;
   roomId: string;
+  isDetached?: boolean;
 }
 
 export interface QueueItem {
@@ -44,7 +46,7 @@ export interface RoomMutation {
   correlationId: string;
   payload: {
     roomId: string;
-    type: 'PLAY' | 'PAUSE' | 'SEEK' | 'SKIP' | 'BACK' | 'QUEUE_REORDER' | 'QUEUE_JUMP' | 'ROOM_RESYNC' | 'QUEUE_ADD' | 'QUEUE_REMOVE' | 'QUEUE_CLEAR' | 'QUEUE_BATCH_APPEND' | 'SET_PUBLIC' | 'SET_REQUEST_ONLY' | 'APPROVE_REQUEST' | 'DENY_REQUEST' | 'UPDATE_IDENTITY' | 'TRANSFER_AUTHORITY' | 'QUEUE_PLAYLIST_REQUEST' | 'SET_TITLE';
+    type: 'PLAY' | 'PAUSE' | 'SEEK' | 'SKIP' | 'BACK' | 'QUEUE_REORDER' | 'QUEUE_JUMP' | 'ROOM_RESYNC' | 'QUEUE_ADD' | 'QUEUE_REMOVE' | 'QUEUE_CLEAR' | 'QUEUE_BATCH_APPEND' | 'SET_PUBLIC' | 'SET_REQUEST_ONLY' | 'APPROVE_REQUEST' | 'DENY_REQUEST' | 'UPDATE_IDENTITY' | 'TRANSFER_AUTHORITY' | 'QUEUE_PLAYLIST_REQUEST' | 'SET_TITLE' | 'SET_PEER_STATUS';
     playhead?: number;
     currentTrackId?: string;
     timestamp: number;
@@ -59,6 +61,7 @@ export interface RoomMutation {
     targetUserId?: string;
     playlistId?: string;
     title?: string;
+    isDetached?: boolean;
   };
 }
 
@@ -78,6 +81,6 @@ export interface StateSync {
     isPublic?: boolean;
     isRequestOnly?: boolean;
     pendingRequests?: { id: string; trackId: string; title: string; username: string }[];
-    peers?: { socketId: string; userId: string; username: string }[];
+    peers?: { socketId: string; userId: string; username: string; isDetached?: boolean }[];
   };
 }
