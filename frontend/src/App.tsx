@@ -290,16 +290,16 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col p-4 md:p-8 max-w-4xl mx-auto">
+    <div className="h-screen flex flex-col p-4 md:p-6 lg:p-8 max-w-[1600px] mx-auto overflow-hidden">
       {/* Header */}
-      <header className="flex items-center justify-between mb-12">
+      <header className="flex items-center justify-between mb-6 shrink-0">
         <div className="flex items-center gap-4">
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-bold text-white leading-none">{activeRoomId}</h2>
+              <h2 className="text-2xl font-bold text-white leading-none tracking-tight truncate max-w-[200px]">{activeRoomId}</h2>
               <button 
                 onClick={handleCopyLink}
-                className="p-1 hover:bg-zinc-900 rounded-md transition-all text-zinc-500 hover:text-white"
+                className="p-1.5 hover:bg-zinc-900 rounded-md transition-all text-zinc-500 hover:text-white shrink-0"
                 title="Copy Invite Link"
               >
                 {copied ? <Check className="w-4 h-4 text-green-500" /> : <Share2 className="w-4 h-4" />}
@@ -307,7 +307,7 @@ function App() {
             </div>
             <div className="flex items-center gap-2 mt-1">
               <div className={cn("w-2 h-2 rounded-full", isConnected ? "bg-green-500" : "bg-red-500")} />
-              <span className="text-xs text-zinc-500 font-medium uppercase tracking-wider">
+              <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
                 {isConnected ? "Synchronized" : "Disconnected"}
               </span>
             </div>
@@ -319,8 +319,8 @@ function App() {
             <button
               onClick={() => setShowSettings(!showSettings)}
               className={cn(
-                "p-2 rounded-lg transition-colors",
-                showSettings ? "bg-white text-black" : "text-zinc-400 hover:text-white hover:bg-zinc-900"
+                "p-2.5 rounded-xl transition-all active:scale-95",
+                showSettings ? "bg-white text-black shadow-lg shadow-white/10" : "text-zinc-400 hover:text-white hover:bg-zinc-900"
               )}
             >
               <Settings className="w-5 h-5" />
@@ -329,7 +329,7 @@ function App() {
 
           <button
             onClick={handleLeave}
-            className="p-2 hover:bg-zinc-900 rounded-lg transition-colors text-zinc-400 hover:text-white"
+            className="p-2.5 hover:bg-zinc-900 rounded-xl transition-all text-zinc-400 hover:text-white active:scale-95"
           >
             <LogOut className="w-5 h-5" />
           </button>
@@ -337,7 +337,7 @@ function App() {
       </header>
 
       {showSettings && isHost && (
-        <div className="mb-8 p-6 bg-zinc-900 rounded-3xl border border-zinc-800 animate-in fade-in slide-in-from-top-4 duration-300">
+        <div className="mb-6 p-6 bg-zinc-900 rounded-3xl border border-zinc-800 animate-in fade-in slide-in-from-top-4 duration-300 shrink-0">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-sm font-bold text-zinc-300 uppercase tracking-widest">Room Settings</h3>
             <button 
@@ -348,7 +348,7 @@ function App() {
               {copied ? "Copied!" : "Copy Invite Link"}
             </button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -409,10 +409,12 @@ function App() {
                     </button>
                  </div>
               </div>
-              
+            </div>
+
+            <div className="space-y-4">
               <div className="p-4 bg-zinc-950 rounded-2xl border border-zinc-800/50">
                  <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Room Authority</div>
-                 <div className="text-xs text-zinc-400">Host ID: <span className="font-mono text-blue-400">{hostId}</span></div>
+                 <div className="text-xs text-zinc-400 truncate">Host ID: <span className="font-mono text-blue-400">{hostId}</span></div>
               </div>
             </div>
           </div>
@@ -420,10 +422,10 @@ function App() {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col lg:grid lg:grid-cols-3 gap-8 w-full">
+      <main className="flex-1 flex flex-col lg:grid lg:grid-cols-4 gap-6 min-h-0">
         {/* Left: Queue (Desktop) / Tabbed (Mobile) */}
         <div className={cn(
-          "lg:col-span-1 h-[500px]",
+          "lg:col-span-1 min-h-0",
           mobileTab !== 'queue' && "hidden lg:block"
         )}>
           <QueueView 
@@ -440,9 +442,9 @@ function App() {
         </div>
 
         {/* Center: Player */}
-        <div className="order-first lg:order-none col-span-1 lg:col-span-1 flex flex-col items-center justify-start space-y-8 w-full">
-          {/* Mock Player */}
-          <div className="w-full aspect-video bg-zinc-900 rounded-3xl border border-zinc-800 flex flex-col items-center justify-center relative overflow-hidden group shadow-2xl">
+        <div className="order-first lg:order-none col-span-1 lg:col-span-2 flex flex-col items-center justify-start space-y-6 min-h-0 overflow-y-auto lg:overflow-visible">
+          {/* Player Container */}
+          <div className="w-full flex-1 min-h-[300px] lg:min-h-0 bg-zinc-900 rounded-[2.5rem] border border-zinc-800 flex flex-col items-center justify-center relative overflow-hidden group shadow-2xl">
             {roomState?.currentTrackId ? (
               <YouTubePlayer
                 ref={ytPlayerRef}
@@ -457,117 +459,125 @@ function App() {
                 dataSaver={dataSaver}
                 muted={audioMode === 'passive'}
               />            ) : (
-              <div className="z-10 text-center space-y-4 p-6">
-                 <div className="text-sm font-medium text-zinc-500 uppercase tracking-widest">Idle</div>
-                 <h3 className="text-xl md:text-3xl font-bold text-zinc-700 max-w-md mx-auto leading-tight">
-                   Enter a YouTube URL to Start
+              <div className="z-10 text-center space-y-6 p-8">
+                 <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-zinc-800/50 border border-zinc-700/50 text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em]">
+                   System Idle
+                 </div>
+                 <h3 className="text-3xl md:text-4xl font-black text-zinc-700 max-w-md mx-auto leading-tight tracking-tight">
+                   Paste a URL to <span className="text-zinc-600">initialize</span>
                  </h3>
               </div>
             )}
           </div>
 
-          {/* Track Input */}
-          <form onSubmit={handleAddTrack} className="w-full flex gap-2">
-            <input
-              type="text"
-              placeholder="Paste YouTube URL or ID"
-              value={trackUrl}
-              onChange={(e) => setTrackUrl(e.target.value)}
-              className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-700 transition-all placeholder:text-zinc-600 text-white"
-            />
-            <button
-              type="submit"
-              className="bg-zinc-800 hover:bg-zinc-700 text-white p-2 rounded-xl transition-all active:scale-95"
-            >
-              <Plus className="w-5 h-5" />
-            </button>
-          </form>
-
-          {/* Controls */}
-          <div className="flex flex-col items-center gap-6 w-full">
-            <div className="flex items-center gap-8">
-              <button className="p-4 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-400 transition-all hover:scale-105 active:scale-95">
-                <SkipForward className="w-6 h-6 rotate-180" />
-              </button>
-              
-              <button 
-                onClick={() => {
-                  const isPlaying = roomState?.isPlaying;
-                  const playhead = ytPlayerRef.current?.getCurrentTime() || roomState?.currentPlayhead || 0;
-                  emitMutation(isPlaying ? 'PAUSE' : 'PLAY', { playhead });
-                }}
-                disabled={!isHost}
-                className={cn(
-                  "w-20 h-20 flex items-center justify-center rounded-3xl transition-all hover:scale-105 active:scale-95 shadow-xl disabled:opacity-50 disabled:cursor-not-allowed",
-                  roomState?.isPlaying ? "bg-zinc-900 border border-zinc-800 text-white" : "bg-white text-black"
-                )}
+          {/* Player UI Controls Wrapper */}
+          <div className="w-full space-y-6 shrink-0">
+            {/* Track Input */}
+            <form onSubmit={handleAddTrack} className="w-full flex gap-3">
+              <input
+                type="text"
+                placeholder="Paste YouTube URL or ID"
+                value={trackUrl}
+                onChange={(e) => setTrackUrl(e.target.value)}
+                className="flex-1 bg-zinc-900 border border-zinc-800 rounded-2xl px-6 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-700 transition-all placeholder:text-zinc-600 text-white shadow-inner"
+              />
+              <button
+                type="submit"
+                className="bg-white hover:bg-zinc-200 text-black p-4 rounded-2xl transition-all active:scale-95 shadow-lg shadow-white/5"
               >
-                {roomState?.isPlaying ? <Pause className="w-8 h-8 fill-current" /> : <Play className="w-8 h-8 fill-current" />}
+                <Plus className="w-6 h-6" />
               </button>
+            </form>
 
-              <button 
-                onClick={() => emitMutation('SKIP')}
-                disabled={!isHost}
-                className="p-4 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-400 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <SkipForward className="w-6 h-6" />
-              </button>
-            </div>
+            {/* Main Controls Section */}
+            <div className="flex flex-col items-center gap-8 w-full">
+              <div className="flex items-center gap-10">
+                <button className="p-5 bg-zinc-900 hover:bg-zinc-800 rounded-3xl border border-zinc-800 text-zinc-500 transition-all hover:scale-110 active:scale-90">
+                  <SkipForward className="w-6 h-6 rotate-180 fill-current" />
+                </button>
+                
+                <button 
+                  onClick={() => {
+                    const isPlaying = roomState?.isPlaying;
+                    const playhead = ytPlayerRef.current?.getCurrentTime() || roomState?.currentPlayhead || 0;
+                    emitMutation(isPlaying ? 'PAUSE' : 'PLAY', { playhead });
+                  }}
+                  disabled={!isHost}
+                  className={cn(
+                    "w-24 h-24 flex items-center justify-center rounded-[2.5rem] transition-all hover:scale-105 active:scale-95 shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed",
+                    roomState?.isPlaying ? "bg-zinc-900 border border-zinc-800 text-white" : "bg-white text-black"
+                  )}
+                >
+                  {roomState?.isPlaying ? <Pause className="w-10 h-10 fill-current" /> : <Play className="w-10 h-10 fill-current ml-1" />}
+                </button>
 
-            <div className="w-full max-w-sm flex items-center gap-6 px-4 py-3 bg-zinc-900/50 rounded-2xl border border-zinc-800/50">
-               <div className="flex-1 flex items-center gap-3">
-                 <span className="text-[10px] font-bold text-zinc-500 uppercase">Vol</span>
-                 <input 
-                   type="range" 
-                   min="0" 
-                   max="100" 
-                   value={volume} 
-                   onChange={(e) => setVolume(parseInt(e.target.value))}
-                   className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-white"
-                 />
-                 <span className="text-[10px] font-mono text-zinc-400 w-6">{volume}</span>
-               </div>
-               
-               <div className="w-px h-4 bg-zinc-800" />
+                <button 
+                  onClick={() => emitMutation('SKIP')}
+                  disabled={!isHost}
+                  className="p-5 bg-zinc-900 hover:bg-zinc-800 rounded-3xl border border-zinc-800 text-zinc-500 transition-all hover:scale-110 active:scale-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <SkipForward className="w-6 h-6 fill-current" />
+                </button>
+              </div>
 
-               <button 
-                 onClick={() => setDataSaver(!dataSaver)}
-                 className={cn(
-                   "flex items-center gap-2 px-3 py-1 rounded-lg transition-all border",
-                   dataSaver 
-                    ? "bg-blue-500/10 border-blue-500/50 text-blue-400" 
-                    : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-300"
-                 )}
-               >
-                 <div className={cn("w-1.5 h-1.5 rounded-full", dataSaver ? "bg-blue-400 animate-pulse" : "bg-zinc-600")} />
-                 <span className="text-[10px] font-bold uppercase tracking-tight">Data Saver</span>
-               </button>
+              {/* Volume & Data Saver Bar */}
+              <div className="w-full max-w-md flex items-center gap-8 px-6 py-4 bg-zinc-900/50 rounded-3xl border border-zinc-800/50 backdrop-blur-md">
+                 <div className="flex-1 flex items-center gap-4">
+                   <div className="p-2 rounded-lg bg-zinc-800/50">
+                     <VolumeX className="w-4 h-4 text-zinc-400" />
+                   </div>
+                   <input 
+                     type="range" 
+                     min="0" 
+                     max="100" 
+                     value={volume} 
+                     onChange={(e) => setVolume(parseInt(e.target.value))}
+                     className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-white"
+                   />
+                   <span className="text-[10px] font-mono font-bold text-zinc-400 w-6">{volume}</span>
+                 </div>
+                 
+                 <div className="w-px h-6 bg-zinc-800" />
+
+                 <button 
+                   onClick={() => setDataSaver(!dataSaver)}
+                   className={cn(
+                     "flex items-center gap-2.5 px-4 py-2 rounded-xl transition-all border",
+                     dataSaver 
+                      ? "bg-blue-500/10 border-blue-500/50 text-blue-400" 
+                      : "bg-zinc-800/50 border-zinc-700/50 text-zinc-500 hover:text-zinc-300"
+                   )}
+                 >
+                   <div className={cn("w-2 h-2 rounded-full", dataSaver ? "bg-blue-400 animate-pulse shadow-[0_0_8px_rgba(96,165,250,0.5)]" : "bg-zinc-600")} />
+                   <span className="text-[10px] font-black uppercase tracking-wider">Data Saver</span>
+                 </button>
+              </div>
             </div>
           </div>
 
-          {/* Mobile Tabs */}
-          <div className="flex lg:hidden w-full bg-zinc-900 rounded-2xl p-1 border border-zinc-800">
+          {/* Mobile Tab Navigation */}
+          <div className="flex lg:hidden w-full bg-zinc-900 rounded-2xl p-1.5 border border-zinc-800 shrink-0">
             <button 
               onClick={() => setMobileTab('chat')}
               className={cn(
-                "flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-all",
-                mobileTab === 'chat' ? "bg-zinc-800 text-white" : "text-zinc-500"
+                "flex-1 flex items-center justify-center gap-3 py-3 rounded-xl text-xs font-black transition-all",
+                mobileTab === 'chat' ? "bg-zinc-800 text-white shadow-lg" : "text-zinc-500"
               )}
             >
               <MessageSquare className="w-4 h-4" />
-              Chat
+              CHAT
             </button>
             <button 
               onClick={() => setMobileTab('queue')}
               className={cn(
-                "flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-all",
-                mobileTab === 'queue' ? "bg-zinc-800 text-white" : "text-zinc-500"
+                "flex-1 flex items-center justify-center gap-3 py-3 rounded-xl text-xs font-black transition-all",
+                mobileTab === 'queue' ? "bg-zinc-800 text-white shadow-lg" : "text-zinc-500"
               )}
             >
               <ListMusic className="w-4 h-4" />
-              Queue
+              QUEUE
               {roomState?.queue && roomState.queue.length > 0 && (
-                <span className="bg-blue-600 text-[8px] px-1.5 py-0.5 rounded-full ml-1">{roomState.queue.length}</span>
+                <span className="bg-blue-600 text-[10px] px-2 py-0.5 rounded-full ml-1 font-bold">{roomState.queue.length}</span>
               )}
             </button>
           </div>
@@ -575,49 +585,55 @@ function App() {
 
         {/* Right: Chat (Desktop) / Tabbed (Mobile) */}
         <div className={cn(
-          "lg:col-span-1 h-[500px]",
+          "lg:col-span-1 min-h-0",
           mobileTab !== 'chat' && "hidden lg:block"
         )}>
           <ChatView messages={messages} onSendMessage={sendMessage} currentUserId={userId} />
         </div>
       </main>
 
-      {/* Footer / Info */}
-      <footer className="mt-12 pt-8 border-t border-zinc-900 grid grid-cols-2 gap-4">
-        <div className="bg-zinc-900/30 p-4 rounded-2xl border border-zinc-800/50">
-          <div className="flex items-center gap-2 mb-2 text-zinc-500 uppercase text-[10px] font-bold tracking-widest">
-            <Users className="w-3 h-3" />
-            Host Status
+      {/* Footer / Status Bar */}
+      <footer className="mt-6 pt-6 border-t border-zinc-900 flex flex-col md:flex-row gap-4 shrink-0">
+        <div className="flex-1 bg-zinc-900/40 p-4 rounded-[1.5rem] border border-zinc-800/50 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center shrink-0">
+            <Users className="w-5 h-5 text-zinc-500" />
           </div>
-          <div className="text-sm font-medium">
-            {isHost ? "You are the Master" : "Listening to Peer"}
+          <div className="min-w-0">
+            <div className="text-zinc-500 uppercase text-[9px] font-black tracking-[0.2em] mb-0.5">Host Authority</div>
+            <div className="text-sm font-bold text-zinc-200 truncate">
+              {isHost ? "Master Node" : "Peer Instance"}
+            </div>
           </div>
-          <div className="text-[10px] text-zinc-600 font-mono mt-1 truncate">
-            {hostId || "Waiting..."}
+          <div className="ml-auto px-3 py-1 rounded-lg bg-zinc-950 border border-zinc-800 font-mono text-[9px] text-zinc-600 truncate max-w-[150px]">
+            {hostId || "DETACHED"}
           </div>
         </div>
 
-        <div className="bg-zinc-900/30 p-4 rounded-2xl border border-zinc-800/50">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2 text-zinc-500 uppercase text-[10px] font-bold tracking-widest">
-              <Radio className="w-3 h-3" />
-              Your Identity
-            </div>
-            <button 
-              onClick={() => {
-                const next = prompt("Enter new username:", username);
-                if (next && next.trim()) {
-                  handleNameChange(next.trim());
-                  emitMutation('UPDATE_IDENTITY', { username: next.trim() });
-                }
-              }}
-              className="text-[10px] text-zinc-500 hover:text-white uppercase font-bold"
-            >
-              Edit
-            </button>
+        <div className="flex-1 bg-zinc-900/40 p-4 rounded-[1.5rem] border border-zinc-800/50 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center shrink-0">
+            <Radio className="w-5 h-5 text-zinc-500" />
           </div>
-          <div className="text-sm font-medium truncate">{username}</div>
-          <div className="text-[10px] text-zinc-600 font-mono mt-1 truncate">ID: {userId} | Socket: {socketId || 'offline'}</div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between mb-0.5">
+              <div className="text-zinc-500 uppercase text-[9px] font-black tracking-[0.2em]">User Profile</div>
+              <button 
+                onClick={() => {
+                  const next = prompt("Update display identity:", username);
+                  if (next && next.trim()) {
+                    handleNameChange(next.trim());
+                    emitMutation('UPDATE_IDENTITY', { username: next.trim() });
+                  }
+                }}
+                className="text-[9px] text-blue-500 hover:text-blue-400 uppercase font-black tracking-widest"
+              >
+                Sync Name
+              </button>
+            </div>
+            <div className="text-sm font-bold text-zinc-200 truncate break-all">{username}</div>
+          </div>
+          <div className="px-3 py-1 rounded-lg bg-zinc-950 border border-zinc-800 font-mono text-[9px] text-zinc-600 truncate max-w-[120px]">
+             {socketId ? `SOCK: ${socketId.substring(0,6)}` : "OFFLINE"}
+          </div>
         </div>
       </footer>
     </div>
