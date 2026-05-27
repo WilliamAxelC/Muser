@@ -82,5 +82,6 @@ export interface StateSync {
     isRequestOnly?: boolean;
     pendingRequests?: { id: string; trackId: string; title: string; username: string }[];
     peers?: { socketId: string; userId: string; username: string; isDetached?: boolean }[];
+    hostUserId?: string;
   };
 }

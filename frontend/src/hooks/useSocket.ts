@@ -32,6 +32,7 @@ interface StateSync {
   isRequestOnly?: boolean;
   pendingRequests?: { id: string; trackId: string; title: string; username: string }[];
   peers?: { socketId: string; userId: string; username: string }[];
+  hostUserId?: string;
 }
 
 export function useSocket(roomId: string | null, userId: string, username: string, password?: string, title?: string, isUnsynced: boolean = false) {

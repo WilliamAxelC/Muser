@@ -226,15 +226,23 @@ io.on('connection', async (socket) => {
     io.to(rId).emit('HOST_CHANGED', { hostId: hId, hostName });
   };
 
+  const buildActivePeers = (sockets: any[]) => {
+    const peersMap: Record<string, any> = {};
+    for (const s of sockets) {
+      const uid = s.data.userId || 'unknown';
+      peersMap[uid] = {
+        socketId: s.id,
+        userId: uid,
+        username: s.data.username,
+        isDetached: s.data.isDetached || false
+      };
+    }
+    return Object.values(peersMap);
+  };
+
   const broadcastRosterUpdate = async (rId: string) => {
     const sockets = await io.in(rId).fetchSockets();
-    const activePeers = sockets.map(s => ({
-      socketId: s.id,
-      userId: s.data.userId?.substring(0, 8) || 'unknown',
-      username: s.data.username,
-      isDetached: s.data.isDetached || false
-    }));
-    io.to(rId).emit('ROSTER_UPDATE', { peers: activePeers });
+    io.to(rId).emit('ROSTER_UPDATE', { peers: buildActivePeers(sockets) });
   };
 
   let isReconnect = false;
@@ -252,12 +260,7 @@ io.on('connection', async (socket) => {
     const state = await roomManager.getState(roomId);
     if (state) {
       const sockets = await io.in(roomId).fetchSockets();
-      const activePeers = sockets.map(s => ({
-        socketId: s.id,
-        userId: s.data.userId?.substring(0, 8) || 'unknown',
-        username: s.data.username,
-        isDetached: s.data.isDetached || false
-      }));
+      const activePeers = buildActivePeers(sockets);
       socket.emit('STATE_SYNC', {
         event: 'STATE_SYNC',
         version: 1,
@@ -274,7 +277,8 @@ io.on('connection', async (socket) => {
           isPublic: state.isPublic,
           isRequestOnly: state.isRequestOnly,
           pendingRequests: state.pendingRequests,
-          peers: activePeers
+          peers: activePeers,
+          hostUserId: state.hostId
         }
       });
       io.to(roomId).emit('HOST_CHANGED', { hostId: state.hostId, hostName: state.hostId === userId ? username : undefined });
@@ -307,12 +311,7 @@ io.on('connection', async (socket) => {
     // Initial sync
     const state = await roomManager.getState(roomId);
     if (state) {
-      const activePeers = sockets.map(s => ({
-        socketId: s.id,
-        userId: s.data.userId?.substring(0, 8) || 'unknown',
-        username: s.data.username,
-        isDetached: s.data.isDetached || false
-      }));
+      const activePeers = buildActivePeers(sockets);
 
       socket.emit('STATE_SYNC', {
         event: 'STATE_SYNC',
@@ -330,7 +329,8 @@ io.on('connection', async (socket) => {
           isPublic: state.isPublic || false,
           isRequestOnly: state.isRequestOnly || false,
           pendingRequests: state.pendingRequests || [],
-          peers: activePeers
+          peers: activePeers,
+          hostUserId: state.hostId
         }
       });
       // Broadcast lightweight roster update to everyone
@@ -666,12 +666,7 @@ io.on('connection', async (socket) => {
 
     // Broadcast Sync
     const socketsInRoom = await io.in(mutation.payload.roomId).fetchSockets();
-    const activePeers = socketsInRoom.map(s => ({
-      socketId: s.id,
-      userId: s.data.userId?.substring(0, 8) || 'unknown',
-      username: s.data.username,
-      isDetached: s.data.isDetached || false
-    }));
+    const activePeers = buildActivePeers(socketsInRoom);
 
     io.to(mutation.payload.roomId).emit('STATE_SYNC', {
       event: 'STATE_SYNC',
@@ -689,7 +684,8 @@ io.on('connection', async (socket) => {
         isPublic,
         isRequestOnly,
         pendingRequests,
-        peers: activePeers
+        peers: activePeers,
+        hostUserId: state?.hostId
       }
     });
     });
