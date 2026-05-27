@@ -78,6 +78,17 @@ function App() {
   const [detachedIsPlaying, setDetachedIsPlaying] = useState(false);
   const [showWarningBanner, setShowWarningBanner] = useState(false);
 
+  // Phase 5: Prevent State Bleed on New Room
+  useEffect(() => {
+    setRoomPassword('');
+    setRoomTitleInput('');
+    setIsUnsynced(false);
+    setDetachedQueue([]);
+    setDetachedCurrentTrackId(null);
+    setDetachedIsPlaying(false);
+    setShowWarningBanner(false);
+  }, [activeRoomId]);
+
   // Phase 1: Local Session State Buckets & Catch-up re-synchronization
   useEffect(() => {
     if (isUnsynced && !prevUnsyncedRef.current) {
