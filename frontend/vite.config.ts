@@ -22,24 +22,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       injectRegister: false,
       includeAssets: ['favicon.svg', 'icons.svg'],
-      manifest: {
-        name: 'MRelay',
-        short_name: 'MRelay',
-        description: 'Collaborative Sync-Stream Music Player',
-        theme_color: '#000000',
-        icons: [
-          {
-            src: 'favicon.svg',
-            sizes: '192x192',
-            type: 'image/svg+xml'
-          },
-          {
-            src: 'favicon.svg',
-            sizes: '512x512',
-            type: 'image/svg+xml'
-          }
-        ]
-      }
+      manifest: false
     })
   ],
 })
