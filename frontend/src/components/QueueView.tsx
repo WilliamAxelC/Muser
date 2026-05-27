@@ -34,6 +34,8 @@ interface QueueViewProps {
   pendingRequests?: PendingRequest[];
   onApprove?: (id: string) => void;
   onDeny?: (id: string) => void;
+  onApproveAll?: () => void;
+  onDenyAll?: () => void;
   localUserId?: string;
   hostUserId?: string;
 }
@@ -41,7 +43,7 @@ interface QueueViewProps {
 export const QueueView: React.FC<QueueViewProps> = ({ 
   queue, detachedQueue, isUnsynced, history = [], isHost, onReorder, onLocalReorder, onRemove, onLocalRemove, onJump, onLocalJump,
   isRequestOnly, onToggleRequestOnly, 
-  pendingRequests = [], onApprove, onDeny, localUserId, hostUserId 
+  pendingRequests = [], onApprove, onDeny, onApproveAll, onDenyAll, localUserId, hostUserId 
 }) => {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'queue' | 'pending' | 'history'>('queue');
@@ -204,39 +206,57 @@ export const QueueView: React.FC<QueueViewProps> = ({
           pendingRequests.length === 0 ? (
             <div className="text-center text-zinc-600 text-sm mt-8">No pending requests</div>
           ) : (
-            <ul className="space-y-2">
-              {pendingRequests.map((req) => (
-                <li
-                  key={req.id}
-                  className="flex flex-col gap-2 p-3 bg-zinc-950/50 rounded-xl border border-zinc-800/50"
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex flex-col min-w-0">
-                      <div className="text-sm font-medium text-zinc-300 truncate">
-                        {req.title}
+            <div className="space-y-4">
+              {(localUserId && hostUserId && localUserId === hostUserId && pendingRequests.length > 1) && (
+                <div className="flex justify-end gap-2 px-2">
+                  <button
+                    onClick={() => onApproveAll?.()}
+                    className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5"
+                  >
+                    <Check className="w-3.5 h-3.5" /> Accept All
+                  </button>
+                  <button
+                    onClick={() => onDenyAll?.()}
+                    className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5"
+                  >
+                    <X className="w-3.5 h-3.5" /> Reject All
+                  </button>
+                </div>
+              )}
+              <ul className="space-y-2">
+                {pendingRequests.map((req) => (
+                  <li
+                    key={req.id}
+                    className="flex flex-col gap-2 p-3 bg-zinc-950/50 rounded-xl border border-zinc-800/50"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="flex flex-col min-w-0">
+                        <div className="text-sm font-medium text-zinc-300 truncate">
+                          {req.title}
+                        </div>
+                        <span className="text-[10px] text-zinc-500 mt-1">Requested by <span className="text-zinc-400">{req.username}</span></span>
                       </div>
-                      <span className="text-[10px] text-zinc-500 mt-1">Requested by <span className="text-zinc-400">{req.username}</span></span>
+                      {(localUserId && hostUserId && localUserId === hostUserId) && (
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => onApprove?.(req.id)}
+                            className="p-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 rounded-lg transition-colors"
+                          >
+                            <Check className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => onDeny?.(req.id)}
+                            className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    {(localUserId && hostUserId && localUserId === hostUserId) && (
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          onClick={() => onApprove?.(req.id)}
-                          className="p-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 rounded-lg transition-colors"
-                        >
-                          <Check className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => onDeny?.(req.id)}
-                          className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg transition-colors"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )
         )}
 

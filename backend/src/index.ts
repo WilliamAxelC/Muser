@@ -45,7 +45,7 @@ const RoomMutationSchema = z.object({
   correlationId: z.string().max(100),
   payload: z.object({
     roomId: z.string().min(1).max(50).regex(/^[a-zA-Z0-9_-]+$/),
-    type: z.enum(['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'BACK', 'QUEUE_REORDER', 'QUEUE_JUMP', 'ROOM_RESYNC', 'QUEUE_ADD', 'QUEUE_REMOVE', 'QUEUE_CLEAR', 'QUEUE_BATCH_APPEND', 'SET_PUBLIC', 'SET_REQUEST_ONLY', 'APPROVE_REQUEST', 'DENY_REQUEST', 'UPDATE_IDENTITY', 'TRANSFER_AUTHORITY', 'QUEUE_PLAYLIST_REQUEST', 'SET_TITLE', 'SET_PEER_STATUS']),
+    type: z.enum(['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'BACK', 'QUEUE_REORDER', 'QUEUE_JUMP', 'ROOM_RESYNC', 'QUEUE_ADD', 'QUEUE_REMOVE', 'QUEUE_CLEAR', 'QUEUE_BATCH_APPEND', 'SET_PUBLIC', 'SET_REQUEST_ONLY', 'APPROVE_REQUEST', 'DENY_REQUEST', 'APPROVE_ALL_REQUESTS', 'DENY_ALL_REQUESTS', 'UPDATE_IDENTITY', 'TRANSFER_AUTHORITY', 'QUEUE_PLAYLIST_REQUEST', 'SET_TITLE', 'SET_PEER_STATUS']),
     playhead: z.number().min(0).optional(),
     currentTrackId: z.string().length(11).regex(/^[a-zA-Z0-9_-]{11}$/).optional().or(z.literal('')),
     timestamp: z.number(),
@@ -498,17 +498,57 @@ io.on('connection', async (socket) => {
             return i;
         });
 
-        if (!currentTrackId || currentTrackId === '') {
-            const batch = [...normalized];
-            const first = batch.shift();
-            currentTrackId = first?.videoId || '';
-            currentTitle = first?.title || '';
-            currentPlayhead = 0;
-            isPlaying = true;
-            queue = queue.concat(batch);
-            logger.info({ message: '[System] Auto-promoted first track from batch to idle room', roomId: mutation.payload.roomId, trackId: currentTrackId });
+        if (isRequestOnly && socket.data.userId !== state?.hostId) {
+            // Route all items to pending requests
+            normalized.forEach(item => {
+                pendingRequests.push({
+                    id: `req-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+                    trackId: item.videoId,
+                    title: item.title,
+                    username: socket.data.username
+                });
+            });
+            socket.emit('ERROR', { message: 'Playlist submitted for host approval.' });
         } else {
-            queue = queue.concat(normalized);
+            if (!currentTrackId || currentTrackId === '') {
+                const batch = [...normalized];
+                const first = batch.shift();
+                currentTrackId = first?.videoId || '';
+                currentTitle = first?.title || '';
+                currentPlayhead = 0;
+                isPlaying = true;
+                queue = queue.concat(batch);
+                logger.info({ message: '[System] Auto-promoted first track from batch to idle room', roomId: mutation.payload.roomId, trackId: currentTrackId });
+            } else {
+                queue = queue.concat(normalized);
+            }
+        }
+    }
+
+    if (mutation.payload.type === 'APPROVE_ALL_REQUESTS') {
+        if (socket.data.userId === state?.hostId && pendingRequests.length > 0) {
+            const batch = [...pendingRequests];
+            pendingRequests = []; // Clear pending array
+            
+            const normalized = batch.map(req => ({ videoId: req.trackId, title: req.title }));
+            
+            if (!currentTrackId || currentTrackId === '') {
+                const first = normalized.shift();
+                currentTrackId = first?.videoId || '';
+                currentTitle = first?.title || '';
+                currentPlayhead = 0;
+                isPlaying = true;
+                queue = queue.concat(normalized);
+                logger.info({ message: '[System] Auto-promoted first track from bulk approve to idle room', roomId: mutation.payload.roomId, trackId: currentTrackId });
+            } else {
+                queue = queue.concat(normalized);
+            }
+        }
+    }
+
+    if (mutation.payload.type === 'DENY_ALL_REQUESTS') {
+        if (socket.data.userId === state?.hostId) {
+            pendingRequests = [];
         }
     }
     
