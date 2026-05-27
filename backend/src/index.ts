@@ -45,7 +45,7 @@ const RoomMutationSchema = z.object({
   correlationId: z.string().max(100),
   payload: z.object({
     roomId: z.string().min(1).max(50).regex(/^[a-zA-Z0-9_-]+$/),
-    type: z.enum(['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'QUEUE_REORDER', 'ROOM_RESYNC', 'QUEUE_ADD', 'QUEUE_REMOVE', 'QUEUE_CLEAR', 'QUEUE_BATCH_APPEND', 'SET_PUBLIC', 'SET_REQUEST_ONLY', 'APPROVE_REQUEST', 'DENY_REQUEST']),
+    type: z.enum(['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'QUEUE_REORDER', 'ROOM_RESYNC', 'QUEUE_ADD', 'QUEUE_REMOVE', 'QUEUE_CLEAR', 'QUEUE_BATCH_APPEND', 'SET_PUBLIC', 'SET_REQUEST_ONLY', 'APPROVE_REQUEST', 'DENY_REQUEST', 'UPDATE_IDENTITY']),
     playhead: z.number().min(0).optional(),
     currentTrackId: z.string().length(11).regex(/^[a-zA-Z0-9_-]{11}$/).optional().or(z.literal('')),
     timestamp: z.number(),
@@ -55,7 +55,8 @@ const RoomMutationSchema = z.object({
     newIndex: z.number().optional(),
     isPublic: z.boolean().optional(),
     isRequestOnly: z.boolean().optional(),
-    requestId: z.string().optional()
+    requestId: z.string().optional(),
+    username: z.string().max(50).optional()
   })
 });
 
@@ -95,6 +96,7 @@ io.on('connection', async (socket) => {
   const roomId = socket.handshake.query.roomId as string;
   const userId = socket.handshake.query.userId as string || `user-${socket.id}`;
   let username = socket.handshake.query.username as string || `Guest_${socket.id.substring(0,4)}`;
+  const password = socket.handshake.query.password as string;
 
   if (!roomId) {
     logger.warn({ message: '[Diagnostic] Connection attempt without roomId', socket_id: socket.id });
@@ -123,8 +125,17 @@ io.on('connection', async (socket) => {
     io.to(rId).emit('HOST_CHANGED', { hostId: hId, hostName });
   };
 
-  roomManager.join(roomId, socket.id, userId).then(async (hostId) => {
+  roomManager.join(roomId, socket.id, userId, password).then(async (hostId) => {
     let currentHostId = hostId;
+    
+    // Announce Join
+    io.to(roomId).emit('ROOM_MESSAGE', {
+      id: `sys-${Date.now()}`,
+      userId: 'system',
+      username: 'System',
+      text: `${username} joined the room`,
+      timestamp: Date.now()
+    });
     
     // Self-Healing: Verify host is actually alive upon join
     const sockets = await io.in(roomId).fetchSockets();
@@ -161,7 +172,11 @@ io.on('connection', async (socket) => {
     
     await broadcastHostChange(roomId, currentHostId);
   }).catch(err => {
-    logger.error({ message: '[Diagnostic] Error joining room', error: err, socket_id: socket.id });
+    if (err.message === 'INVALID_PASSWORD') {
+      socket.emit('ERROR', { message: 'Incorrect room password. Access denied.' });
+    } else {
+      logger.error({ message: '[Diagnostic] Error joining room', error: err, socket_id: socket.id });
+    }
     socket.disconnect();
   });
 
@@ -275,6 +290,12 @@ io.on('connection', async (socket) => {
     if (mutation.payload.type === 'QUEUE_BATCH_APPEND' && mutation.payload.items) {
         queue = queue.concat(mutation.payload.items);
     }
+    
+    if (mutation.payload.type === 'UPDATE_IDENTITY' && mutation.payload.username) {
+        socket.data.username = mutation.payload.username;
+        logger.info({ message: `[Identity] User ${socket.id} updated name to ${mutation.payload.username}` });
+    }
+
     if (mutation.payload.type === 'SKIP') {
         if (queue.length > 0) {
             currentTrackId = queue.shift() as string;
@@ -333,6 +354,15 @@ io.on('connection', async (socket) => {
     rateLimiter.cleanup(socket.id);
 
     if (rId) {
+      // Announce Leave
+      io.to(rId).emit('ROOM_MESSAGE', {
+        id: `sys-${Date.now()}`,
+        userId: 'system',
+        username: 'System',
+        text: `${socket.data.username} left the room`,
+        timestamp: Date.now()
+      });
+
       try {
         const sockets = await io.in(rId).fetchSockets();
         if (sockets.length === 0) {
