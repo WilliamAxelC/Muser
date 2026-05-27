@@ -46,7 +46,7 @@ const RoomMutationSchema = z.object({
   correlationId: z.string().max(100),
   payload: z.object({
     roomId: z.string().min(1).max(50).regex(/^[a-zA-Z0-9_-]+$/),
-    type: z.enum(['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'QUEUE_REORDER', 'ROOM_RESYNC', 'QUEUE_ADD', 'QUEUE_REMOVE', 'QUEUE_CLEAR', 'QUEUE_BATCH_APPEND', 'SET_PUBLIC', 'SET_REQUEST_ONLY', 'APPROVE_REQUEST', 'DENY_REQUEST', 'UPDATE_IDENTITY']),
+    type: z.enum(['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'QUEUE_REORDER', 'ROOM_RESYNC', 'QUEUE_ADD', 'QUEUE_REMOVE', 'QUEUE_CLEAR', 'QUEUE_BATCH_APPEND', 'SET_PUBLIC', 'SET_REQUEST_ONLY', 'APPROVE_REQUEST', 'DENY_REQUEST', 'UPDATE_IDENTITY', 'TRANSFER_AUTHORITY']),
     playhead: z.number().min(0).optional(),
     currentTrackId: z.string().length(11).regex(/^[a-zA-Z0-9_-]{11}$/).optional().or(z.literal('')),
     timestamp: z.number(),
@@ -57,7 +57,8 @@ const RoomMutationSchema = z.object({
     isPublic: z.boolean().optional(),
     isRequestOnly: z.boolean().optional(),
     requestId: z.string().optional(),
-    username: z.string().max(50).optional()
+    username: z.string().max(50).optional(),
+    targetUserId: z.string().optional()
   })
 });
 
@@ -165,6 +166,12 @@ io.on('connection', async (socket) => {
     // Initial sync
     const state = await roomManager.getState(roomId);
     if (state) {
+      const activePeers = sockets.map(s => ({
+        socketId: s.id,
+        userId: s.data.userId,
+        username: s.data.username
+      }));
+
       socket.emit('STATE_SYNC', {
         event: 'STATE_SYNC',
         version: 1,
@@ -178,7 +185,8 @@ io.on('connection', async (socket) => {
           queue: state.queue || [],
           isPublic: state.isPublic || false,
           isRequestOnly: state.isRequestOnly || false,
-          pendingRequests: state.pendingRequests || []
+          pendingRequests: state.pendingRequests || [],
+          peers: activePeers
         }
       });
     }
@@ -309,6 +317,22 @@ io.on('connection', async (socket) => {
         logger.info({ message: `[Identity] User ${socket.id} updated name to ${mutation.payload.username}` });
     }
 
+    if (mutation.payload.type === 'TRANSFER_AUTHORITY' && mutation.payload.targetUserId) {
+        if (socket.id === state?.hostId) {
+            const targetId = mutation.payload.targetUserId;
+            // Verify target exists in room
+            const sockets = await io.in(mutation.payload.roomId).fetchSockets();
+            const targetSocket = sockets.find(s => s.id === targetId || s.data.userId === targetId);
+            
+            if (targetSocket) {
+                const actualSocketId = targetSocket.id;
+                await roomManager.setHost(mutation.payload.roomId, actualSocketId);
+                await broadcastHostChange(mutation.payload.roomId, actualSocketId);
+                logger.info({ message: `[Authority] Master transferred from ${socket.id} to ${actualSocketId}` });
+            }
+        }
+    }
+
     if (mutation.payload.type === 'SKIP') {
         if (queue.length > 0) {
             currentTrackId = queue.shift() as string;
@@ -323,10 +347,20 @@ io.on('connection', async (socket) => {
       isPlaying,
       currentPlayhead,
       currentTrackId,
-      queue
+      queue,
+      isPublic,
+      isRequestOnly,
+      pendingRequests
     });
 
     // Broadcast Sync
+    const socketsInRoom = await io.in(mutation.payload.roomId).fetchSockets();
+    const activePeers = socketsInRoom.map(s => ({
+      socketId: s.id,
+      userId: s.data.userId,
+      username: s.data.username
+    }));
+
     io.to(mutation.payload.roomId).emit('STATE_SYNC', {
       event: 'STATE_SYNC',
       version: 1,
@@ -337,7 +371,11 @@ io.on('connection', async (socket) => {
         currentPlayhead,
         currentTrackId,
         updatedAt: Date.now(),
-        queue
+        queue,
+        isPublic,
+        isRequestOnly,
+        pendingRequests,
+        peers: activePeers
       }
     });
   });

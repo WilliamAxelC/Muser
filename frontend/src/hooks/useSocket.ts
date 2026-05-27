@@ -18,6 +18,7 @@ interface StateSync {
   isPublic?: boolean;
   isRequestOnly?: boolean;
   pendingRequests?: { id: string; trackId: string; username: string }[];
+  peers?: { socketId: string; userId: string; username: string }[];
 }
 
 export function useSocket(roomId: string | null, userId: string, username: string, password?: string) {
