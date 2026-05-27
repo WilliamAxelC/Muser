@@ -117,6 +117,8 @@ export function useSocket(roomId: string | null, userId: string, username: strin
       console.log('[Diagnostic] Cleaning up socket connection.');
       socket.disconnect();
       setMessages([]);
+      setRoomState(null);
+      setHostId(null);
     };
   }, [roomId, userId, username, title, onRoomClosed]);
 
