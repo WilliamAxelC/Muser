@@ -256,13 +256,15 @@ function App() {
              </div>
           </div>
         )}
-        <div className="max-w-6xl w-full mx-auto px-4 py-12 space-y-12">
-          <div className="text-center space-y-4">
-             <div className="inline-flex items-center justify-center w-20 h-20 rounded-[2rem] bg-zinc-900 border border-zinc-800 shadow-2xl">
-                <Radio className="w-10 h-10 text-blue-500 animate-pulse" />
+        <div className="max-w-6xl w-full mx-auto px-4 py-6 md:py-12 space-y-8 md:space-y-12">
+          <div className="flex items-center justify-center gap-3 md:gap-4">
+             <div className="inline-flex items-center justify-center w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-zinc-900 border border-zinc-800 shadow-2xl shrink-0">
+                <Radio className="w-5 h-5 md:w-7 md:h-7 text-blue-500 animate-pulse" />
              </div>
-             <h1 className="text-4xl font-black tracking-tighter text-white uppercase italic">M-Relay</h1>
-             <p className="text-zinc-500 font-medium tracking-tight">Collaborative Sync-Stream Protocol</p>
+             <div>
+               <h1 className="text-2xl md:text-4xl font-black tracking-tighter text-white uppercase italic leading-none">M-Relay</h1>
+               <p className="hidden md:block text-zinc-500 text-sm font-medium tracking-tight mt-0.5">Collaborative Sync-Stream Protocol</p>
+             </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -299,8 +301,8 @@ function App() {
 
                     <div className="flex items-center justify-between bg-zinc-950/50 p-4 rounded-2xl border border-zinc-800/50">
                       <div>
-                        <div className="text-sm font-bold text-white">Public Discovery</div>
-                        <div className="text-[9px] text-zinc-600 uppercase tracking-tighter">Visible to global peer-list</div>
+                        <div className="text-sm font-bold text-white">Public Room</div>
+                        <div className="text-[9px] text-zinc-600 uppercase tracking-tighter">Visible in the room browser</div>
                       </div>
                       <button onClick={() => setIsCreatingPublic(!isCreatingPublic)} className={cn("w-12 h-6 rounded-full transition-all relative", isCreatingPublic ? "bg-blue-600" : "bg-zinc-800")}>
                         <div className={cn("w-4 h-4 bg-white rounded-full absolute top-1 transition-all", isCreatingPublic ? "right-1" : "left-1")} />
@@ -388,10 +390,18 @@ function App() {
       )}
 
       <header className="h-16 shrink-0 border-b border-zinc-900 bg-zinc-950/50 backdrop-blur-xl px-4 md:px-8 flex items-center justify-between z-40">
-        <div className="flex items-center gap-4 min-w-0">
+        {/* Left: Site logo as home button + room info */}
+        <div className="flex items-center gap-3 min-w-0">
+          <button onClick={handleLeave} className="flex items-center gap-2 shrink-0 hover:opacity-80 transition-opacity" title="Back to Home">
+            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800">
+              <Radio className="w-4 h-4 text-blue-500 animate-pulse" />
+            </div>
+            <span className="text-sm font-black text-white uppercase italic tracking-tight hidden sm:block">M-Relay</span>
+          </button>
+          <div className="w-px h-6 bg-zinc-800 shrink-0" />
           <div className="flex flex-col min-w-0">
             <div className="flex items-center gap-2">
-              <h2 className="text-xl font-black text-white tracking-tighter truncate">{roomState?.title || activeRoomId}</h2>
+              <h2 className="text-sm md:text-base font-black text-white tracking-tighter truncate">{roomState?.title || activeRoomId}</h2>
               <button onClick={handleCopyLink} className="p-1 hover:bg-zinc-800 rounded-md transition-all text-zinc-500 hover:text-white shrink-0">
                 {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Share2 className="w-3.5 h-3.5" />}
               </button>
@@ -401,6 +411,7 @@ function App() {
             )}
           </div>
         </div>
+        {/* Right: Action buttons */}
         <div className="flex items-center gap-1 md:gap-3">
           <button onClick={() => setShowUserList(!showUserList)} className={cn("p-2 rounded-xl transition-all", showUserList ? "bg-white text-black shadow-lg shadow-white/10" : "text-zinc-400 hover:bg-zinc-900 hover:text-white")} title="User Roster">
             <Users className="w-5 h-5" />
@@ -435,7 +446,7 @@ function App() {
               ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center space-y-6">
                   <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center animate-pulse"> <Radio className="w-8 h-8 text-zinc-600" /> </div>
-                  <h3 className="text-2xl md:text-3xl font-black text-zinc-700 tracking-tighter"> READY FOR <span className="text-zinc-600 uppercase italic tracking-widest ml-2">Ingestion</span> </h3>
+                  <h3 className="text-2xl md:text-3xl font-black text-zinc-700 tracking-tighter"> WAITING FOR <span className="text-zinc-600 uppercase italic tracking-widest ml-2">Media</span> </h3>
                 </div>
               )}
             </div>
@@ -444,17 +455,10 @@ function App() {
               <MediaIngestionForm onIngest={handleIngest} />
             </div>
 
-            <div className="flex flex-col items-center gap-8 w-full max-w-3xl">
-              <div className="w-full flex items-center justify-between gap-4 px-4 md:px-6 py-4 bg-zinc-900/50 rounded-3xl border border-zinc-800/50 backdrop-blur-md">
-                 {/* Container Block 1 (Left - Volume Grouping) */}
-                 <div className="flex items-center gap-2 w-44 flex-shrink-0">
-                   <div className="p-2 rounded-lg bg-zinc-800/50 flex-shrink-0"> <VolumeX className="w-4 h-4 text-zinc-400" /> </div>
-                   <input type="range" min="0" max="100" value={volume} onChange={(e) => setVolume(parseInt(e.target.value))} className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-white" />
-                   <div className="w-12 text-right font-mono text-xs"><span className="font-bold text-zinc-400">{volume}</span></div>
-                 </div>
-
-                 {/* Container Block 2 (Center - Navigation Cushion) */}
-                 <div className="flex-1 flex items-center justify-center gap-4 md:gap-8">
+            <div className="flex flex-col items-center gap-4 w-full max-w-3xl">
+              <div className="w-full flex flex-wrap items-center justify-between gap-y-3 gap-x-4 px-4 md:px-6 py-4 bg-zinc-900/50 rounded-3xl border border-zinc-800/50 backdrop-blur-md">
+                 {/* Container Block 1 - Player Controls (always centered on top row) */}
+                 <div className="flex items-center justify-center gap-4 md:gap-8 w-full sm:w-auto sm:flex-1 order-1">
                    <button onClick={() => {
                      if (isUnsynced) {
                        ytPlayerRef.current?.seekTo(0);
@@ -496,8 +500,8 @@ function App() {
                    </button>
                  </div>
 
-                 {/* Container Block 3 (Right - Mode Toggles Grouping) */}
-                 <div className="flex items-center gap-4 ml-auto flex-shrink-0">
+                 {/* Container Block 2 - Mode Toggles */}
+                 <div className="flex items-center gap-2 order-2 flex-shrink-0">
                     {!isHost && (
                       <button onClick={() => setIsUnsynced(!isUnsynced)} className={cn("flex items-center gap-2 px-3 py-2 rounded-xl border transition-all flex-shrink-0", isUnsynced ? "bg-orange-500/10 border-orange-500/50 text-orange-400" : "bg-zinc-800/50 border-zinc-700/50 text-zinc-500")} title="Bypass Master Sync">
                          <ShieldCheck className={cn("w-3.5 h-3.5", isUnsynced ? "text-orange-400" : "text-zinc-600")} />
@@ -509,6 +513,13 @@ function App() {
                       <div className={cn("w-1.5 h-1.5 rounded-full", dataSaver ? "bg-blue-400 animate-pulse shadow-[0_0_8px_rgba(96,165,250,0.5)]" : "bg-zinc-600")} />
                       <span className="text-[9px] font-black uppercase tracking-wider"> {dataSaver ? 'Active' : 'Data Saver'} </span>
                     </button>
+                 </div>
+
+                 {/* Container Block 3 - Volume Bar (full width on mobile, left-aligned on sm+) */}
+                 <div className="flex items-center gap-2 w-full sm:w-44 order-3 flex-shrink-0">
+                   <div className="p-2 rounded-lg bg-zinc-800/50 flex-shrink-0"> <VolumeX className="w-4 h-4 text-zinc-400" /> </div>
+                   <input type="range" min="0" max="100" value={volume} onChange={(e) => setVolume(parseInt(e.target.value))} className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-white" />
+                   <div className="w-12 text-right font-mono text-xs"><span className="font-bold text-zinc-400">{volume}</span></div>
                  </div>
               </div>
             </div>
@@ -605,7 +616,7 @@ function App() {
           <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
              <div className="w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-[2rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300">
                <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
-                 <h3 className="text-sm font-black text-zinc-300 uppercase tracking-widest">Administrative Matrix</h3>
+                 <h3 className="text-sm font-black text-zinc-300 uppercase tracking-widest">Room Settings</h3>
                  <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-zinc-800 rounded-xl transition-all"><X className="w-5 h-5" /></button>
                </div>
                <div className="p-8 space-y-8">
@@ -617,7 +628,7 @@ function App() {
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
-                    <div> <div className="text-sm font-bold text-white">Public Discovery</div> <div className="text-xs text-zinc-500">Visible in the global discovery set</div> </div>
+                    <div> <div className="text-sm font-bold text-white">Public Room</div> <div className="text-xs text-zinc-500">Show this room in the public browser</div> </div>
                     <button onClick={() => emitMutation('SET_PUBLIC', { isPublic: !roomState?.isPublic })} className={cn("w-12 h-6 rounded-full transition-all relative", roomState?.isPublic ? "bg-blue-600" : "bg-zinc-800")}> <div className={cn("w-4 h-4 bg-white rounded-full absolute top-1 transition-all", roomState?.isPublic ? "right-1" : "left-1")} /> </button>
                   </div>
                   <div className="flex items-center justify-between">
@@ -645,7 +656,7 @@ function App() {
                         <button onClick={() => setAudioMode('passive')} className={cn( "flex flex-col items-center gap-2 p-3 rounded-xl border transition-all", audioMode === 'passive' ? "bg-zinc-800 border-zinc-700 text-zinc-300" : "bg-zinc-900 border-zinc-800 text-zinc-500" )}> <VolumeX className="w-4 h-4" /> <span className="text-[10px] font-bold uppercase">Passive</span> </button>
                     </div>
                   </div>
-                  <button onClick={handleCopyLink} className="w-full py-4 bg-zinc-800 hover:bg-zinc-700 text-white rounded-2xl font-bold flex items-center justify-center gap-2 transition-all" > {copied ? <Check className="w-4 h-4 text-green-500" /> : <Share2 className="w-4 h-4" />} {copied ? "Link Harvested" : "Copy Invite Hyperlink"} </button>
+                  <button onClick={handleCopyLink} className="w-full py-4 bg-zinc-800 hover:bg-zinc-700 text-white rounded-2xl font-bold flex items-center justify-center gap-2 transition-all" > {copied ? <Check className="w-4 h-4 text-green-500" /> : <Share2 className="w-4 h-4" />} {copied ? "Copied!" : "Copy Invite Link"} </button>
                </div>
              </div>
           </div>
