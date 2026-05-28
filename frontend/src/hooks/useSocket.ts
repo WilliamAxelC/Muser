@@ -33,6 +33,7 @@ interface StateSync {
   pendingRequests?: { id: string; trackId: string; title: string; username: string }[];
   peers?: { socketId: string; userId: string; username: string }[];
   hostUserId?: string;
+  chatRateLimit?: { maxTokens: number; intervalMs: number };
 }
 
 export function useSocket(roomId: string | null, userId: string, username: string, password?: string, title?: string, isUnsynced: boolean = false, onRoomClosed?: (message: string) => void) {
@@ -40,6 +41,7 @@ export function useSocket(roomId: string | null, userId: string, username: strin
   const [roomState, setRoomState] = useState<StateSync | null>(null);
   const [hostId, setHostId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [chatError, setChatError] = useState<{message: string, remainingMs: number} | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const isUnsyncedRef = useRef(isUnsynced);
 
@@ -113,6 +115,13 @@ export function useSocket(roomId: string | null, userId: string, username: strin
       alert(`MRelay Server Notice:\n${data.message}`);
     });
 
+    socket.on('CHAT_RATE_LIMIT_ERROR', (data: any) => {
+      setChatError({ message: data.message, remainingMs: data.remainingMs });
+      setTimeout(() => {
+        setChatError(null);
+      }, data.remainingMs);
+    });
+
     return () => {
       console.log('[Diagnostic] Cleaning up socket connection.');
       socket.disconnect();
@@ -120,7 +129,7 @@ export function useSocket(roomId: string | null, userId: string, username: strin
       setRoomState(null);
       setHostId(null);
     };
-  }, [roomId, userId, username, title, onRoomClosed]);
+  }, [roomId, userId, username, onRoomClosed]);
 
   const emitMutation = useCallback((type: string, payload: any = {}) => {
     if (!socketRef.current || !roomId) {
@@ -158,6 +167,7 @@ export function useSocket(roomId: string | null, userId: string, username: strin
     emitMutation,
     socketId: socketRef.current?.id,
     messages,
-    sendMessage
+    sendMessage,
+    chatError
   };
 }

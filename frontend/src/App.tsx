@@ -29,7 +29,12 @@ function App() {
   const [volume, setVolume] = useState(50);
   const [dataSaver, setDataSaver] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [chatMaxTokens, setChatMaxTokens] = useState(3);
+  const [chatInterval, setChatInterval] = useState(5);
   const [roomPassword, setRoomPassword] = useState('');
+  const [publicRoomsFilter, setPublicRoomsFilter] = useState('');
+  const [isRefreshingRooms, setIsRefreshingRooms] = useState(false);
   const [roomTitleInput, setRoomTitleInput] = useState('');
   const [copied, setCopied] = useState(false);
   const [mobileTab, setMobileTab] = useState<'queue' | 'chat'>('chat');
@@ -70,13 +75,21 @@ function App() {
     setActiveRoomId(null);
   }, []);
 
-  const { isConnected, roomState, isHost, emitMutation, messages, sendMessage } = useSocket(activeRoomId, userId, username, roomPassword, roomTitleInput, isUnsynced, handleRoomClosed);
+  const { isConnected, roomState, isHost, emitMutation, messages, sendMessage, chatError } = useSocket(activeRoomId, userId, username, roomPassword, roomTitleInput, isUnsynced, handleRoomClosed);
   const ytPlayerRef = useRef<YouTubePlayerRef>(null);
 
   const [detachedQueue, setDetachedQueue] = useState<{ videoId: string; title: string }[]>([]);
   const [detachedCurrentTrackId, setDetachedCurrentTrackId] = useState<string | null>(null);
   const [detachedIsPlaying, setDetachedIsPlaying] = useState(false);
   const [showWarningBanner, setShowWarningBanner] = useState(false);
+
+  useEffect(() => {
+    if (showSettings) {
+      setEditTitle(roomState?.title || '');
+      setChatMaxTokens(roomState?.chatRateLimit?.maxTokens ?? 3);
+      setChatInterval(roomState?.chatRateLimit ? roomState.chatRateLimit.intervalMs / 1000 : 5);
+    }
+  }, [showSettings, roomState?.title, roomState?.chatRateLimit]);
 
   // Phase 5: Prevent State Bleed on New Room
   useEffect(() => {
@@ -199,13 +212,19 @@ function App() {
     }
   }, [roomState?.title, roomState?.isPlaying, activeRoomId, emitMutation, isHost]);
 
-  const [publicRooms, setPublicRooms] = useState<{roomId: string, updatedAt: number}[]>([]);
+  const [publicRooms, setPublicRooms] = useState<{roomId: string, title?: string, updatedAt: number}[]>([]);
+
+  const fetchPublicRooms = () => {
+    setIsRefreshingRooms(true);
+    fetch('/api/rooms').then(res => res.json()).then(data => {
+      if (data.rooms) setPublicRooms(data.rooms);
+    }).catch(err => console.error(err))
+      .finally(() => setTimeout(() => setIsRefreshingRooms(false), 500));
+  };
 
   React.useEffect(() => {
     if (!activeRoomId) {
-      fetch('/api/rooms').then(res => res.json()).then(data => {
-        if (data.rooms) setPublicRooms(data.rooms);
-      }).catch(err => console.error(err));
+      fetchPublicRooms();
     }
   }, [activeRoomId]);
 
@@ -227,7 +246,16 @@ function App() {
 
   if (!activeRoomId) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4 md:p-8 bg-black overflow-y-auto">
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 md:p-8 bg-black overflow-y-auto relative">
+        {errorToast && (
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[60] animate-in fade-in slide-in-from-top-4 duration-300">
+             <div className="bg-red-600 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-red-500/50">
+               <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center font-bold text-xs">!</div>
+               <span className="text-sm font-bold tracking-tight">{errorToast}</span>
+               <button onClick={() => setErrorToast(null)} className="ml-2 hover:opacity-50"><X className="w-4 h-4" /></button>
+             </div>
+          </div>
+        )}
         <div className="max-w-6xl w-full mx-auto px-4 py-12 space-y-12">
           <div className="text-center space-y-4">
              <div className="inline-flex items-center justify-center w-20 h-20 rounded-[2rem] bg-zinc-900 border border-zinc-800 shadow-2xl">
@@ -314,18 +342,26 @@ function App() {
           </div>
           
           <div className="space-y-6 pt-8 border-t border-zinc-900">
-            <h3 className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.3em] text-center">Public Rooms</h3>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <h3 className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.3em]">Public Rooms</h3>
+              <div className="flex items-center gap-3 w-full sm:w-auto">
+                <input type="text" placeholder="SEARCH ROOMS..." value={publicRoomsFilter} onChange={(e) => setPublicRoomsFilter(e.target.value)} className="bg-zinc-950 border border-zinc-800/80 rounded-xl px-4 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-900/50 transition-all placeholder:text-zinc-700 text-white w-full sm:w-48 uppercase font-mono tracking-widest" />
+                <button onClick={fetchPublicRooms} className="text-[10px] font-black bg-zinc-900 hover:bg-zinc-800 text-zinc-400 px-3 py-2 rounded-xl border border-zinc-800 transition-all uppercase tracking-widest flex items-center gap-2 shrink-0">
+                  <RotateCcw className={cn("w-3 h-3 transition-transform duration-500 ease-in-out", isRefreshingRooms && "animate-spin [animation-direction:reverse]")} /> Refresh
+                </button>
+              </div>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-               {publicRooms.length === 0 ? ( 
+               {publicRooms.filter(r => (r.title || r.roomId).toLowerCase().includes(publicRoomsFilter.toLowerCase())).length === 0 ? ( 
                  <div className="md:col-span-2 lg:col-span-3 text-zinc-800 text-[10px] font-black uppercase text-center py-12 tracking-widest bg-zinc-900/10 rounded-3xl border border-dashed border-zinc-900">No active public nodes</div> 
                ) : ( 
-                 publicRooms.map((room) => ( 
+                 publicRooms.filter(r => (r.title || r.roomId).toLowerCase().includes(publicRoomsFilter.toLowerCase())).map((room) => ( 
                    <div key={room.roomId} className="flex items-center justify-between p-5 bg-zinc-950/40 rounded-2xl border border-zinc-900 hover:border-zinc-800 transition-all group"> 
-                     <div className="flex flex-col">
-                        <span className="font-mono text-zinc-300 font-black tracking-widest uppercase">{room.roomId}</span>
-                        <span className="text-[9px] text-zinc-700 font-bold uppercase tracking-tight">Active Peer Node</span>
+                     <div className="flex flex-col min-w-0 pr-4">
+                        <span className="font-sans text-zinc-300 font-black tracking-tight text-lg truncate" title={room.title || room.roomId}>{room.title || room.roomId}</span>
+                        <span className="text-[10px] text-zinc-600 font-mono uppercase tracking-widest mt-1">ID: {room.roomId}</span>
                      </div>
-                     <button onClick={() => setActiveRoomId(room.roomId)} className="text-[10px] font-black bg-zinc-900 hover:bg-white hover:text-black text-zinc-500 px-6 py-2.5 rounded-xl border border-zinc-800 transition-all uppercase tracking-widest">Connect</button> 
+                     <button onClick={() => setActiveRoomId(room.roomId)} className="text-[10px] font-black bg-zinc-900 hover:bg-white hover:text-black text-zinc-500 px-6 py-2.5 rounded-xl border border-zinc-800 transition-all uppercase tracking-widest shrink-0">Connect</button> 
                    </div> 
                  )) 
                )}
@@ -491,7 +527,7 @@ function App() {
           </div>
           <div className="flex-1 min-h-0">
             {mobileTab === 'chat' ? (
-              <ChatView messages={messages} onSendMessage={sendMessage} currentUserId={userId} />
+              <ChatView messages={messages} onSendMessage={sendMessage} currentUserId={userId} chatError={chatError} />
             ) : (
               <QueueView 
                 queue={roomState?.queue || []} 
@@ -576,7 +612,8 @@ function App() {
                   <div className="space-y-4">
                     <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Room Title</label>
                     <div className="flex gap-2">
-                       <input type="text" value={roomState?.title || ''} onChange={(e) => emitMutation('SET_TITLE', { title: e.target.value })} className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all text-white" />
+                       <input type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all text-white" />
+                       <button onClick={() => emitMutation('SET_TITLE', { title: editTitle })} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all">Save</button>
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
@@ -586,6 +623,20 @@ function App() {
                   <div className="flex items-center justify-between">
                     <div> <div className="text-sm font-bold text-white">Governance Mode</div> <div className="text-xs text-zinc-500">Require host approval for guest adds</div> </div>
                     <button onClick={() => emitMutation('SET_REQUEST_ONLY', { isRequestOnly: !roomState?.isRequestOnly })} className={cn("w-12 h-6 rounded-full transition-all relative", roomState?.isRequestOnly ? "bg-blue-600" : "bg-zinc-800")}> <div className={cn("w-4 h-4 bg-white rounded-full absolute top-1 transition-all", roomState?.isRequestOnly ? "right-1" : "left-1")} /> </button>
+                  </div>
+                  <div className="p-4 bg-zinc-950 rounded-2xl border border-zinc-800/50 space-y-4">
+                    <div> <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Chat Rate Limiter</div> <div className="text-[10px] text-zinc-600">Messages allowed per interval</div> </div>
+                    <div className="flex gap-4">
+                      <div className="flex-1 space-y-2">
+                        <label className="text-[10px] font-bold text-zinc-600 uppercase">Max Messages</label>
+                        <input type="number" min="1" max="50" value={chatMaxTokens} onChange={(e) => setChatMaxTokens(Number(e.target.value))} className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-white" />
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <label className="text-[10px] font-bold text-zinc-600 uppercase">Interval (sec)</label>
+                        <input type="number" min="1" max="60" value={chatInterval} onChange={(e) => setChatInterval(Number(e.target.value))} className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-white" />
+                      </div>
+                    </div>
+                    <button onClick={() => emitMutation('SET_CHAT_RATE_LIMIT', { chatRateLimit: { maxTokens: chatMaxTokens, intervalMs: chatInterval * 1000 } })} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-xl text-xs font-bold transition-all">Update Chat Limits</button>
                   </div>
                   <div className="p-4 bg-zinc-950 rounded-2xl border border-zinc-800/50">
                     <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-4">Audio Topology</div>

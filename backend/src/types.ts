@@ -17,6 +17,7 @@ export interface ServerToClientEvents {
   STATE_SYNC: (data: StateSync) => void;
   HOST_CHANGED: (data: { hostId: string, hostName?: string }) => void;
   ERROR: (data: { message: string }) => void;
+  CHAT_RATE_LIMIT_ERROR: (data: { message: string, remainingMs: number }) => void;
   ROOM_MESSAGE: (data: ChatMessage) => void;
   ROSTER_UPDATE: (data: { peers: { socketId: string; userId: string; username: string; isDetached?: boolean }[] }) => void;
   ROOM_CLOSED: (data: { message: string }) => void;
@@ -47,7 +48,7 @@ export interface RoomMutation {
   correlationId: string;
   payload: {
     roomId: string;
-    type: 'PLAY' | 'PAUSE' | 'SEEK' | 'SKIP' | 'BACK' | 'QUEUE_REORDER' | 'QUEUE_JUMP' | 'ROOM_RESYNC' | 'QUEUE_ADD' | 'QUEUE_REMOVE' | 'QUEUE_CLEAR' | 'QUEUE_BATCH_APPEND' | 'SET_PUBLIC' | 'SET_REQUEST_ONLY' | 'APPROVE_REQUEST' | 'DENY_REQUEST' | 'APPROVE_ALL_REQUESTS' | 'DENY_ALL_REQUESTS' | 'UPDATE_IDENTITY' | 'TRANSFER_AUTHORITY' | 'QUEUE_PLAYLIST_REQUEST' | 'SET_TITLE' | 'SET_PEER_STATUS';
+    type: 'PLAY' | 'PAUSE' | 'SEEK' | 'SKIP' | 'BACK' | 'QUEUE_REORDER' | 'QUEUE_JUMP' | 'ROOM_RESYNC' | 'QUEUE_ADD' | 'QUEUE_REMOVE' | 'QUEUE_CLEAR' | 'QUEUE_BATCH_APPEND' | 'SET_PUBLIC' | 'SET_REQUEST_ONLY' | 'APPROVE_REQUEST' | 'DENY_REQUEST' | 'APPROVE_ALL_REQUESTS' | 'DENY_ALL_REQUESTS' | 'UPDATE_IDENTITY' | 'TRANSFER_AUTHORITY' | 'QUEUE_PLAYLIST_REQUEST' | 'SET_TITLE' | 'SET_PEER_STATUS' | 'SET_CHAT_RATE_LIMIT';
     playhead?: number;
     currentTrackId?: string;
     timestamp: number;
@@ -63,6 +64,7 @@ export interface RoomMutation {
     playlistId?: string;
     title?: string;
     isDetached?: boolean;
+    chatRateLimit?: { maxTokens: number; intervalMs: number };
   };
 }
 
@@ -84,5 +86,6 @@ export interface StateSync {
     pendingRequests?: { id: string; trackId: string; title: string; username: string }[];
     peers?: { socketId: string; userId: string; username: string; isDetached?: boolean }[];
     hostUserId?: string;
+    chatRateLimit?: { maxTokens: number; intervalMs: number };
   };
 }
