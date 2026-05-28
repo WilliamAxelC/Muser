@@ -73,6 +73,14 @@ export class RoomManager {
         -- Remove from join order
         redis.call('ZREM', join_order_key, user_id)
 
+        local remaining_users = redis.call('ZCARD', join_order_key)
+        if remaining_users == 0 then
+          -- Room is empty, garbage collect it
+          redis.call('DEL', meta_key)
+          redis.call('DEL', join_order_key)
+          return ''
+        end
+
         -- Check if it was the host
         local host_uid = redis.call('HGET', meta_key, 'host_uid')
         local new_host = host_uid
@@ -86,11 +94,6 @@ export class RoomManager {
             redis.call('HSET', meta_key, 'updated_at', timestamp)
             redis.call('EXPIRE', meta_key, ttl)
             redis.call('EXPIRE', join_order_key, ttl)
-          else
-            -- Room is empty, delete
-            redis.call('DEL', meta_key)
-            redis.call('DEL', join_order_key)
-            new_host = ''
           end
         end
 
@@ -133,7 +136,8 @@ export class RoomManager {
     history?: { videoId: string; title: string; status: 'played' | 'skipped'; timestamp: number }[],
     isPublic?: boolean,
     isRequestOnly?: boolean,
-    pendingRequests?: { id: string; trackId: string; title: string; username: string }[]
+    pendingRequests?: { id: string; trackId: string; title: string; username: string }[],
+    chatRateLimit?: { maxTokens: number; intervalMs: number }
   }) {
     const metaKey = `room:${roomId}:meta`;
     const ttl = 12 * 60 * 60;
@@ -161,6 +165,12 @@ export class RoomManager {
     if (state.pendingRequests) {
       update.pending_requests = JSON.stringify(state.pendingRequests);
     }
+    if (state.title !== undefined) {
+      update.title = state.title;
+    }
+    if (state.chatRateLimit) {
+      update.chat_rate_limit = JSON.stringify(state.chatRateLimit);
+    }
 
     await this.redis.hset(metaKey, update);
     await this.redis.expire(metaKey, ttl);
@@ -183,7 +193,8 @@ export class RoomManager {
       history: JSON.parse(data.history || '[]') as { videoId: string; title: string; status: 'played' | 'skipped'; timestamp: number }[],
       isPublic: data.is_public === '1',
       isRequestOnly: data.is_request_only === '1',
-      pendingRequests: JSON.parse(data.pending_requests || '[]') as { id: string; trackId: string; title: string; username: string }[]
+      pendingRequests: JSON.parse(data.pending_requests || '[]') as { id: string; trackId: string; title: string; username: string }[],
+      chatRateLimit: data.chat_rate_limit ? JSON.parse(data.chat_rate_limit) : undefined
     };
   }
 
@@ -197,6 +208,7 @@ export class RoomManager {
         // Could fetch join_order size for user count if needed
         rooms.push({
           roomId,
+          title: data.title || roomId,
           updatedAt: parseInt(data.updated_at || '0')
         });
       }

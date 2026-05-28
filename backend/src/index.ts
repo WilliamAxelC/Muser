@@ -38,6 +38,7 @@ const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 const redis = new Redis(redisUrl);
 const roomManager = new RoomManager(redis);
 const rateLimiter = new RateLimiter();
+const mutationRateLimiter = new RateLimiter();
 
 const RoomMutationSchema = z.object({
   action: z.literal('ROOM_MUTATION'),
@@ -59,7 +60,8 @@ const RoomMutationSchema = z.object({
     username: z.string().max(50).optional(),
     playlistId: z.string().optional(),
     title: z.string().max(100).optional(),
-    isDetached: z.boolean().optional()
+    isDetached: z.boolean().optional(),
+    targetUserId: z.string().optional()
   })
 });
 
@@ -351,9 +353,15 @@ io.on('connection', async (socket) => {
 
     const mutation = result.data as RoomMutation;
 
-    // Rate limiting for high-frequency events
+    // Rate limiting for high-frequency events and Anti-DDoS
+    const mutationRateCheck = mutationRateLimiter.consume(socket.id, 20, 1000);
+    if (!mutationRateCheck.allowed) {
+      socket.emit('ERROR', { message: 'Too many actions. Please slow down.' });
+      return;
+    }
+
     if (mutation.payload.type === 'SEEK' || mutation.payload.type === 'ROOM_RESYNC') {
-      if (!rateLimiter.consume(socket.id)) {
+      if (!rateLimiter.consume(socket.id).allowed) {
         logger.warn({ message: 'Rate limit exceeded', socket_id: socket.id, type: mutation.payload.type });
         return;
       }
@@ -400,6 +408,7 @@ io.on('connection', async (socket) => {
     let isPublic = state?.isPublic ?? false;
     let isRequestOnly = state?.isRequestOnly ?? false;
     let pendingRequests = state?.pendingRequests || [];
+    let chatRateLimit = state?.chatRateLimit;
 
     if (mutation.payload.type === 'PLAY') isPlaying = true;
     if (mutation.payload.type === 'PAUSE') isPlaying = false;
@@ -414,6 +423,10 @@ io.on('connection', async (socket) => {
 
     if (mutation.payload.type === 'SET_TITLE' && mutation.payload.title) {
         title = mutation.payload.title;
+    }
+
+    if (mutation.payload.type === 'SET_CHAT_RATE_LIMIT' && mutation.payload.chatRateLimit) {
+        chatRateLimit = mutation.payload.chatRateLimit;
     }
 
     if (mutation.payload.type === 'SET_PEER_STATUS' && mutation.payload.isDetached !== undefined) {
@@ -552,18 +565,25 @@ io.on('connection', async (socket) => {
     }
 
     if (mutation.payload.type === 'TRANSFER_AUTHORITY' && mutation.payload.targetUserId) {
-        if (socket.id === state?.hostId) {
+        logger.info({ message: '[Debug] TRANSFER_AUTHORITY triggered', socketUserId: socket.data.userId, stateHostId: state?.hostId, targetId: mutation.payload.targetUserId });
+        if (socket.data.userId === state?.hostId) {
             const targetId = mutation.payload.targetUserId;
             // Verify target exists in room
             const sockets = await io.in(mutation.payload.roomId).fetchSockets();
+            logger.info({ message: '[Debug] TRANSFER_AUTHORITY sockets in room', count: sockets.length, ids: sockets.map(s => s.id) });
             const targetSocket = sockets.find(s => s.id === targetId || s.data.userId === targetId);
             
             if (targetSocket) {
-                const actualSocketId = targetSocket.id;
-                await roomManager.setHost(mutation.payload.roomId, actualSocketId);
-                await broadcastHostChange(mutation.payload.roomId, actualSocketId);
-                logger.info({ message: `[Authority] Master transferred from ${socket.id} to ${actualSocketId}` });
+                const newHostUserId = targetSocket.data.userId;
+                await roomManager.setHost(mutation.payload.roomId, newHostUserId);
+                await broadcastHostChange(mutation.payload.roomId, newHostUserId);
+                logger.info({ message: `[Authority] Master transferred from ${socket.data.userId} to ${newHostUserId}` });
+                if (state) state.hostId = newHostUserId;
+            } else {
+                logger.warn({ message: '[Debug] TRANSFER_AUTHORITY targetSocket not found', targetId });
             }
+        } else {
+            logger.warn({ message: '[Debug] TRANSFER_AUTHORITY failed auth', socketUserId: socket.data.userId, stateHostId: state?.hostId });
         }
     }
 
@@ -710,7 +730,8 @@ io.on('connection', async (socket) => {
       history,
       isPublic,
       isRequestOnly,
-      pendingRequests
+      pendingRequests,
+      chatRateLimit
     });
 
     if (mutation.payload.type === 'SET_PEER_STATUS') {
@@ -739,13 +760,14 @@ io.on('connection', async (socket) => {
         isRequestOnly,
         pendingRequests,
         peers: activePeers,
-        hostUserId: state?.hostId
+        hostUserId: state?.hostId,
+        chatRateLimit
       }
     });
     });
   }
 
-  socket.on('SEND_MESSAGE', (data) => {
+  socket.on('SEND_MESSAGE', async (data) => {
     const result = SendMessageSchema.safeParse(data);
     if (!result.success) {
       logger.warn({ message: 'Invalid SEND_MESSAGE schema', socket_id: socket.id, error: result.error });
@@ -753,6 +775,16 @@ io.on('connection', async (socket) => {
     }
 
     const payload = result.data;
+    const state = await roomManager.getState(payload.roomId);
+
+    const rateCheck = rateLimiter.consume(socket.id, state?.chatRateLimit?.maxTokens, state?.chatRateLimit?.intervalMs);
+    if (!rateCheck.allowed) {
+      socket.emit('CHAT_RATE_LIMIT_ERROR', { 
+        message: `Chat rate limit exceeded. You are timed out for ${Math.ceil(rateCheck.remainingMs / 1000)} seconds.`,
+        remainingMs: rateCheck.remainingMs
+      });
+      return;
+    }
     const message = {
       id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       userId: socket.data.userId,
@@ -774,16 +806,15 @@ io.on('connection', async (socket) => {
       // Immediate Eviction Logic (No Grace Window)
       (async () => {
         try {
-          const stateStr = await redis.hget(`room:${rId}:meta`, 'state');
-          if (!stateStr) return; // Room already gone
+          const state = await roomManager.getState(rId);
+          if (!state) return; // Room already gone
           
-          const state = JSON.parse(stateStr);
           const isHost = state.hostId === uId;
 
           if (isHost) {
             logger.info({ message: '[System] Host disconnected, destroying room', room_id: rId, host_id: uId });
             // Announce closure to everyone before kicking
-            io.to(rId).emit('ROOM_CLOSED', { message: 'Host has left the room' });
+            io.to(rId).emit('ROOM_CLOSED', { message: `Host ${socket.data.username} has left the Room ${state.title || rId}` });
             
             // Delete room from Redis
             await redis.del(`room:${rId}:meta`, `room:${rId}:join_order`);
