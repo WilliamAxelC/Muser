@@ -32,8 +32,8 @@ The stack runs entirely through Docker Compose. Make sure Docker is installed on
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/WilliamAxelC/MRelay.git
-   cd MRelay/infrastructure
+   git clone https://github.com/WilliamAxelC/Muser.git
+   cd Muser/infrastructure
    ```
 
 2. Build and run the containers:
