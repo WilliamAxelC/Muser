@@ -1,6 +1,6 @@
-# MRelay
+# Muser
 
-MRelay is a synchronized YouTube audio relay application. It lets multiple clients connect to a central room to listen to YouTube tracks concurrently while maintaining playback state across the network.
+Muser is a synchronized YouTube audio relay application. It lets multiple clients connect to a central room to listen to YouTube tracks concurrently while maintaining playback state across the network.
 
 ## Features
 

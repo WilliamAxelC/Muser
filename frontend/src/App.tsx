@@ -10,15 +10,15 @@ import { MediaIngestionForm } from './components/MediaIngestionForm';
 
 function App() {
   const [userId] = useState(() => {
-    const saved = localStorage.getItem('mrelay_user_id');
+    const saved = localStorage.getItem('muser_user_id');
     if (saved) return saved;
     const newId = `user-${Math.random().toString(36).substr(2, 9)}`;
-    localStorage.setItem('mrelay_user_id', newId);
+    localStorage.setItem('muser_user_id', newId);
     return newId;
   });
   
   const [username, setUsername] = useState(() => {
-    return localStorage.getItem('mrelay_username') || `Guest_${userId.substr(5, 4)}`;
+    return localStorage.getItem('muser_username') || `Guest_${userId.substr(5, 4)}`;
   });
 
   const [inputRoomId, setInputRoomId] = useState('');
@@ -133,7 +133,7 @@ function App() {
 
   const handleNameChange = (newName: string) => {
     setUsername(newName);
-    localStorage.setItem('mrelay_username', newName);
+    localStorage.setItem('muser_username', newName);
   };
 
   const handleJoin = (e: React.FormEvent) => {
@@ -201,7 +201,7 @@ function App() {
   React.useEffect(() => {
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: roomState?.title || 'MRelay Sync',
+        title: roomState?.title || 'Muser Sync',
         artist: activeRoomId || 'Stream',
         album: 'Collaborative Music',
       });
@@ -262,7 +262,7 @@ function App() {
                 <Radio className="w-5 h-5 md:w-7 md:h-7 text-blue-500 animate-pulse" />
              </div>
              <div>
-               <h1 className="text-2xl md:text-4xl font-black tracking-tighter text-white uppercase italic leading-none">M-Relay</h1>
+               <h1 className="text-2xl md:text-4xl font-black tracking-tighter text-white uppercase italic leading-none">Muser</h1>
                <p className="hidden md:block text-zinc-500 text-sm font-medium tracking-tight mt-0.5">Collaborative Sync-Stream Protocol</p>
              </div>
           </div>
@@ -396,7 +396,7 @@ function App() {
             <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800">
               <Radio className="w-4 h-4 text-blue-500 animate-pulse" />
             </div>
-            <span className="text-sm font-black text-white uppercase italic tracking-tight hidden sm:block">M-Relay</span>
+            <span className="text-sm font-black text-white uppercase italic tracking-tight hidden sm:block">Muser</span>
           </button>
           <div className="w-px h-6 bg-zinc-800 shrink-0" />
           <div className="flex flex-col min-w-0">
@@ -675,7 +675,7 @@ function App() {
               <span className="text-zinc-500">IDENTITY: {username}</span>
            </div>
          </div>
-         <div className="text-[9px] font-mono text-zinc-800 tracking-tighter uppercase opacity-50">MRelay Core v1.3.1</div>
+         <div className="text-[9px] font-mono text-zinc-800 tracking-tighter uppercase opacity-50">Muser Core v1.3.1</div>
       </footer>
     </div>
   );

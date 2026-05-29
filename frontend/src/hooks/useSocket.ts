@@ -112,7 +112,7 @@ export function useSocket(roomId: string | null, userId: string, username: strin
     socket.on('ERROR', (data: any) => {
       console.error('[Diagnostic] Received ERROR from server:', data.message);
       // For immediate visibility to the user
-      alert(`MRelay Server Notice:\n${data.message}`);
+      alert(`Muser Server Notice:\n${data.message}`);
     });
 
     socket.on('CHAT_RATE_LIMIT_ERROR', (data: any) => {
