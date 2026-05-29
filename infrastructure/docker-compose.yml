@@ -3,9 +3,9 @@ services:
     build:
       context: ../frontend
       dockerfile: Dockerfile
-    container_name: mrelay-music-frontend
+    container_name: muser-music-frontend
     networks:
-      - mrelay-net
+      - muser-net
     ports:
       - "8080:8080"
     depends_on:
@@ -15,7 +15,7 @@ services:
     build:
       context: ../backend
       dockerfile: Dockerfile
-    container_name: mrelay-sync-backend
+    container_name: muser-sync-backend
     environment:
       - REDIS_URL=redis://state-cache:6379
       - PORT=3000
@@ -23,15 +23,15 @@ services:
       state-cache:
         condition: service_healthy
     networks:
-      - mrelay-net
+      - muser-net
     ports:
       - "3000:3000"
 
   state-cache:
     image: redis:7.2-alpine
-    container_name: mrelay-state-cache
+    container_name: muser-state-cache
     networks:
-      - mrelay-net
+      - muser-net
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -40,5 +40,5 @@ services:
     restart: unless-stopped
 
 networks:
-  mrelay-net:
+  muser-net:
     driver: bridge

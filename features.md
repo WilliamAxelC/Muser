@@ -1,6 +1,6 @@
-# MRelay Features
+# Muser Features
 
-MRelay is a high-performance, synchronized YouTube audio relay application designed for real-time collaboration.
+Muser is a synchronized YouTube audio relay application for real-time collaboration.
 
 ## Core Synchronization
 - **Real-time State Sync:** High-precision synchronization of YouTube playback state (time, play/pause, volume) across all connected clients via WebSockets.
