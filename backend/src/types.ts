@@ -48,7 +48,7 @@ export interface RoomMutation {
   correlationId: string;
   payload: {
     roomId: string;
-    type: 'PLAY' | 'PAUSE' | 'SEEK' | 'SKIP' | 'BACK' | 'QUEUE_REORDER' | 'QUEUE_JUMP' | 'ROOM_RESYNC' | 'QUEUE_ADD' | 'QUEUE_REMOVE' | 'QUEUE_CLEAR' | 'QUEUE_BATCH_APPEND' | 'SET_PUBLIC' | 'SET_REQUEST_ONLY' | 'APPROVE_REQUEST' | 'DENY_REQUEST' | 'APPROVE_ALL_REQUESTS' | 'DENY_ALL_REQUESTS' | 'UPDATE_IDENTITY' | 'TRANSFER_AUTHORITY' | 'QUEUE_PLAYLIST_REQUEST' | 'SET_TITLE' | 'SET_PEER_STATUS' | 'SET_CHAT_RATE_LIMIT';
+    type: 'PLAY' | 'PAUSE' | 'SEEK' | 'SKIP' | 'BACK' | 'QUEUE_REORDER' | 'QUEUE_JUMP' | 'ROOM_RESYNC' | 'QUEUE_ADD' | 'QUEUE_REMOVE' | 'QUEUE_CLEAR' | 'QUEUE_SHUFFLE' | 'QUEUE_BATCH_APPEND' | 'SET_PUBLIC' | 'SET_REQUEST_ONLY' | 'APPROVE_REQUEST' | 'DENY_REQUEST' | 'APPROVE_ALL_REQUESTS' | 'DENY_ALL_REQUESTS' | 'UPDATE_IDENTITY' | 'TRANSFER_AUTHORITY' | 'QUEUE_PLAYLIST_REQUEST' | 'SET_TITLE' | 'SET_PEER_STATUS' | 'SET_CHAT_RATE_LIMIT' | 'SET_REPEAT_MODE' | 'TRACK_END';
     playhead?: number;
     currentTrackId?: string;
     timestamp: number;
@@ -65,6 +65,7 @@ export interface RoomMutation {
     title?: string;
     isDetached?: boolean;
     chatRateLimit?: { maxTokens: number; intervalMs: number };
+    repeatMode?: 'off' | 'track' | 'queue';
   };
 }
 
@@ -87,5 +88,6 @@ export interface StateSync {
     peers?: { socketId: string; userId: string; username: string; isDetached?: boolean }[];
     hostUserId?: string;
     chatRateLimit?: { maxTokens: number; intervalMs: number };
+    repeatMode?: 'off' | 'track' | 'queue';
   };
 }

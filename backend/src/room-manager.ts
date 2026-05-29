@@ -137,7 +137,8 @@ export class RoomManager {
     isPublic?: boolean,
     isRequestOnly?: boolean,
     pendingRequests?: { id: string; trackId: string; title: string; username: string }[],
-    chatRateLimit?: { maxTokens: number; intervalMs: number }
+    chatRateLimit?: { maxTokens: number; intervalMs: number },
+    repeatMode?: 'off' | 'track' | 'queue'
   }) {
     const metaKey = `room:${roomId}:meta`;
     const ttl = 12 * 60 * 60;
@@ -171,6 +172,9 @@ export class RoomManager {
     if (state.chatRateLimit) {
       update.chat_rate_limit = JSON.stringify(state.chatRateLimit);
     }
+    if (state.repeatMode !== undefined) {
+      update.repeat_mode = state.repeatMode;
+    }
 
     await this.redis.hset(metaKey, update);
     await this.redis.expire(metaKey, ttl);
@@ -194,7 +198,8 @@ export class RoomManager {
       isPublic: data.is_public === '1',
       isRequestOnly: data.is_request_only === '1',
       pendingRequests: JSON.parse(data.pending_requests || '[]') as { id: string; trackId: string; title: string; username: string }[],
-      chatRateLimit: data.chat_rate_limit ? JSON.parse(data.chat_rate_limit) : undefined
+      chatRateLimit: data.chat_rate_limit ? JSON.parse(data.chat_rate_limit) : undefined,
+      repeatMode: (data.repeat_mode as 'off' | 'track' | 'queue') || 'off'
     };
   }
 

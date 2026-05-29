@@ -16,6 +16,8 @@ services:
       context: ../backend
       dockerfile: Dockerfile
     container_name: muser-sync-backend
+    env_file:
+      - ../.env
     environment:
       - REDIS_URL=redis://state-cache:6379
       - PORT=3000
