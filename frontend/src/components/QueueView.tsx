@@ -36,6 +36,8 @@ interface QueueViewProps {
   onDeny?: (id: string) => void;
   onApproveAll?: () => void;
   onDenyAll?: () => void;
+  onClear?: () => void;
+  onShuffle?: () => void;
   localUserId?: string;
   hostUserId?: string;
 }
@@ -43,7 +45,7 @@ interface QueueViewProps {
 export const QueueView: React.FC<QueueViewProps> = ({ 
   queue, detachedQueue, isUnsynced, history = [], isHost, onReorder, onLocalReorder, onRemove, onLocalRemove, onJump, onLocalJump,
   isRequestOnly, onToggleRequestOnly, 
-  pendingRequests = [], onApprove, onDeny, onApproveAll, onDenyAll, localUserId, hostUserId 
+  pendingRequests = [], onApprove, onDeny, onApproveAll, onDenyAll, onClear, onShuffle, localUserId, hostUserId 
 }) => {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'queue' | 'pending' | 'history'>('queue');
@@ -106,8 +108,8 @@ export const QueueView: React.FC<QueueViewProps> = ({
           </span>
         </div>
         
-        <div className="flex items-center justify-between mt-2 pt-2 border-t border-zinc-800/50">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-zinc-800/50">
+          <div className="flex items-center gap-2 w-full">
             <button 
               onClick={() => setActiveTab('queue')}
               className={`text-xs px-3 py-1 rounded-md transition-colors ${activeTab === 'queue' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
@@ -134,15 +136,24 @@ export const QueueView: React.FC<QueueViewProps> = ({
           </div>
           
           {isHost && (
-            <button 
-              onClick={() => onToggleRequestOnly?.(!isRequestOnly)}
-              className={`flex items-center gap-1 text-xs px-2 py-1 rounded-md border transition-colors ${isRequestOnly ? 'border-amber-500/50 text-amber-500 bg-amber-500/10' : 'border-emerald-500/50 text-emerald-500 bg-emerald-500/10'}`}
-              title={isRequestOnly ? "Request Only Mode" : "Fully Open Mode"}
-            >
-              {isRequestOnly ? <ShieldAlert className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
-              {isRequestOnly ? 'Restricted' : 'Open'}
-            </button>
-          )}
+              <div className="flex items-center gap-2 w-full">
+                {activeTab === 'queue' && activeQueue.length > 0 && (
+                  <>
+                    <button onClick={() => onShuffle?.()} className="text-xs px-2 py-1 rounded-md border border-zinc-700 text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors">Shuffle</button>
+                    <button onClick={() => onClear?.()} className="text-xs px-2 py-1 rounded-md border border-red-500/30 text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors">Clear</button>
+                  </>
+                )}
+                <div className="flex-1"></div>
+                <button 
+                  onClick={() => onToggleRequestOnly?.(!isRequestOnly)}
+                  className={`flex items-center gap-1 text-xs px-2 py-1 rounded-md border transition-colors ${isRequestOnly ? 'border-amber-500/50 text-amber-500 bg-amber-500/10' : 'border-emerald-500/50 text-emerald-500 bg-emerald-500/10'}`}
+                  title={isRequestOnly ? "Request Only Mode" : "Fully Open Mode"}
+                >
+                  {isRequestOnly ? <ShieldAlert className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
+                  {isRequestOnly ? 'Restricted' : 'Open'}
+                </button>
+              </div>
+            )}
         </div>
       </div>
       

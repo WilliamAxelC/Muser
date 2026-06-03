@@ -14,7 +14,7 @@ export interface QueueItem {
   title: string;
 }
 
-export interface HistoryItem extends QueueItem {
+interface HistoryItem extends QueueItem {
   status: 'played' | 'skipped';
   timestamp: number;
 }
@@ -34,6 +34,7 @@ interface StateSync {
   peers?: { socketId: string; userId: string; username: string }[];
   hostUserId?: string;
   chatRateLimit?: { maxTokens: number; intervalMs: number };
+  repeatMode?: 'off' | 'track' | 'queue';
 }
 
 export function useSocket(roomId: string | null, userId: string, username: string, password?: string, title?: string, isUnsynced: boolean = false, onRoomClosed?: (message: string) => void) {
@@ -165,7 +166,6 @@ export function useSocket(roomId: string | null, userId: string, username: strin
     hostId,
     isHost: userId === hostId,
     emitMutation,
-    socketId: socketRef.current?.id,
     messages,
     sendMessage,
     chatError

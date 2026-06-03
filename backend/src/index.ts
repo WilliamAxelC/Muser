@@ -5,6 +5,7 @@ import Redis from 'ioredis';
 import dotenv from 'dotenv';
 import { z } from 'zod';
 import logger from './logger';
+import yts from 'yt-search';
 import { RoomManager } from './room-manager';
 import { RateLimiter } from './rate-limiter';
 import { 
@@ -12,7 +13,8 @@ import {
   ServerToClientEvents, 
   InterServerEvents, 
   SocketData,
-  RoomMutation
+  RoomMutation,
+  StateSync
 } from './types';
 
 dotenv.config();
@@ -46,7 +48,7 @@ const RoomMutationSchema = z.object({
   correlationId: z.string().max(100),
   payload: z.object({
     roomId: z.string().min(1).max(50).regex(/^[a-zA-Z0-9_-]+$/),
-    type: z.enum(['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'BACK', 'QUEUE_REORDER', 'QUEUE_JUMP', 'ROOM_RESYNC', 'QUEUE_ADD', 'QUEUE_REMOVE', 'QUEUE_CLEAR', 'QUEUE_BATCH_APPEND', 'SET_PUBLIC', 'SET_REQUEST_ONLY', 'APPROVE_REQUEST', 'DENY_REQUEST', 'APPROVE_ALL_REQUESTS', 'DENY_ALL_REQUESTS', 'UPDATE_IDENTITY', 'TRANSFER_AUTHORITY', 'QUEUE_PLAYLIST_REQUEST', 'SET_TITLE', 'SET_PEER_STATUS']),
+    type: z.enum(['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'BACK', 'QUEUE_REORDER', 'QUEUE_JUMP', 'ROOM_RESYNC', 'QUEUE_ADD', 'QUEUE_REMOVE', 'QUEUE_CLEAR', 'QUEUE_SHUFFLE', 'QUEUE_BATCH_APPEND', 'SET_PUBLIC', 'SET_REQUEST_ONLY', 'APPROVE_REQUEST', 'DENY_REQUEST', 'APPROVE_ALL_REQUESTS', 'DENY_ALL_REQUESTS', 'UPDATE_IDENTITY', 'TRANSFER_AUTHORITY', 'QUEUE_PLAYLIST_REQUEST', 'SET_TITLE', 'SET_PEER_STATUS', 'SET_CHAT_RATE_LIMIT', 'SET_REPEAT_MODE', 'TRACK_END']),
     playhead: z.number().min(0).optional(),
     currentTrackId: z.string().length(11).regex(/^[a-zA-Z0-9_-]{11}$/).optional().or(z.literal('')),
     timestamp: z.number(),
@@ -61,7 +63,9 @@ const RoomMutationSchema = z.object({
     playlistId: z.string().optional(),
     title: z.string().max(100).optional(),
     isDetached: z.boolean().optional(),
-    targetUserId: z.string().optional()
+    targetUserId: z.string().optional(),
+    chatRateLimit: z.object({ maxTokens: z.number().min(1), intervalMs: z.number().min(1000) }).optional(),
+    repeatMode: z.enum(['off', 'track', 'queue']).optional()
   })
 });
 
@@ -84,6 +88,37 @@ const resolveVideoTitle = async (videoId: string): Promise<string> => {
   }
 };
 
+const extractPlaylistItems = (html: string): { videoId: string; title: string }[] => {
+    let items: { videoId: string; title: string }[] = [];
+    // Attempt to parse JSON block for titles
+    const jsonMatch = html.match(/(?:var\s+)?ytInitialData\s*=\s*({.*?});(?:<\/script>)?/);
+    if (jsonMatch) {
+        try {
+            const data = JSON.parse(jsonMatch[1]);
+            const contents = data.contents?.twoColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents?.[0]?.playlistVideoListRenderer?.contents;
+            if (contents) {
+                items = contents
+                    .filter((i: any) => i.playlistVideoRenderer)
+                    .map((i: any) => ({
+                        videoId: i.playlistVideoRenderer.videoId,
+                        title: i.playlistVideoRenderer.title?.runs?.[0]?.text || 'Unknown Title'
+                    }));
+            }
+        } catch (e) {
+            logger.warn({ message: '[Playlist] JSON extraction failed, checking regex fallback', error: e });
+        }
+    }
+
+    if (items.length === 0) {
+        // Fallback: Just IDs with dummy titles
+        const videoIdRegex = /"videoId":"([a-zA-Z0-9_-]{11})"/g;
+        const matches = Array.from(html.matchAll(videoIdRegex));
+        const videoIds = Array.from(new Set(matches.map(m => m[1])));
+        items = videoIds.map(id => ({ videoId: id, title: `YouTube Track (${id})` }));
+    }
+    return items;
+};
+
 app.get('/health', (req, res) => res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() }));
 
 app.get('/api/rooms', async (req, res) => {
@@ -93,6 +128,67 @@ app.get('/api/rooms', async (req, res) => {
   } catch (err) {
     logger.error({ message: 'Failed to fetch public rooms', error: err });
     res.status(500).json({ error: 'Failed to fetch public rooms' });
+  }
+});
+
+app.get('/api/search', async (req, res) => {
+  const q = req.query.q as string;
+  if (!q) return res.status(400).json({ error: 'Missing query parameter q' });
+  
+  const apiKey = process.env.YOUTUBE_API_KEY;
+
+  try {
+    if (apiKey) {
+      const searchRes = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=10&q=${encodeURIComponent(q)}&key=${apiKey}`, {
+        headers: { 'Referer': 'https://muser.cuang.dev/' }
+      });
+      
+      if (!searchRes.ok) throw new Error(`YouTube Search API Error: ${searchRes.statusText}`);
+      const searchData = await searchRes.json();
+      
+      if (!searchData.items || searchData.items.length === 0) {
+        return res.json({ results: [] });
+      }
+
+      const videoIds = searchData.items.map((item: any) => item.id.videoId).join(',');
+      const videoRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${videoIds}&key=${apiKey}`, {
+        headers: { 'Referer': 'https://muser.cuang.dev/' }
+      });
+
+      let durations: Record<string, string> = {};
+      if (videoRes.ok) {
+        const videoData = await videoRes.json();
+        for (const item of videoData.items) {
+          const match = item.contentDetails.duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+          if (match) {
+            const h = parseInt(match[1] || '0');
+            const m = parseInt(match[2] || '0');
+            const s = parseInt(match[3] || '0');
+            durations[item.id] = h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}` : `${m}:${s.toString().padStart(2, '0')}`;
+          }
+        }
+      }
+
+      const videos = searchData.items.map((item: any) => ({
+        videoId: item.id.videoId,
+        title: item.snippet.title,
+        duration: durations[item.id.videoId] || '',
+        author: item.snippet.channelTitle
+      }));
+      return res.json({ results: videos });
+    } else {
+      const r = await yts(q);
+      const videos = r.videos.slice(0, 10).map(v => ({
+        videoId: v.videoId,
+        title: v.title,
+        duration: v.timestamp,
+        author: v.author.name
+      }));
+      res.json({ results: videos });
+    }
+  } catch (err) {
+    logger.error({ message: 'Search failed', query: q, error: err });
+    res.status(500).json({ error: 'Search failed' });
   }
 });
 
@@ -123,42 +219,14 @@ app.get('/api/playlist', async (req, res) => {
     }
 
     const html = await response.text();
-    
-    // Attempt to parse JSON block for titles
-    const jsonMatch = html.match(/(?:var\s+)?ytInitialData\s*=\s*({.*?});(?:<\/script>)?/);
-    if (jsonMatch) {
-        try {
-            const data = JSON.parse(jsonMatch[1]);
-            const contents = data.contents?.twoColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents?.[0]?.playlistVideoListRenderer?.contents;
-            if (contents) {
-                const items = contents
-                    .filter((i: any) => i.playlistVideoRenderer)
-                    .map((i: any) => ({
-                        videoId: i.playlistVideoRenderer.videoId,
-                        title: i.playlistVideoRenderer.title?.runs?.[0]?.text || 'Unknown Title'
-                    }));
-                if (items.length > 0) {
-                    logger.info({ message: '[Playlist] Unrolled with titles', playlistId, count: items.length });
-                    return res.json({ items });
-                }
-            }
-        } catch (e) {
-            logger.warn({ message: '[Playlist] JSON extraction failed, checking regex fallback', error: e });
-        }
-    }
-
-    // Fallback: Just IDs with dummy titles
-    const videoIdRegex = /"videoId":"([a-zA-Z0-9_-]{11})"/g;
-    const matches = Array.from(html.matchAll(videoIdRegex));
-    const videoIds = Array.from(new Set(matches.map(m => m[1])));
-    const items = videoIds.map(id => ({ videoId: id, title: `YouTube Track (${id})` }));
+    const items = extractPlaylistItems(html);
 
     if (items.length === 0) {
       console.warn(`[Playlist Diagnostic] No IDs extracted. HTML snippet: ${html.substring(0, 500)}`);
       return res.status(404).json({ error: 'No videos found in this playlist' });
     }
 
-    logger.info({ message: '[Playlist] Unrolled with fallback', playlistId, count: items.length });
+    logger.info({ message: '[Playlist] Unrolled successfully', playlistId, count: items.length });
     res.json({ items });
   } catch (err) {
     logger.error({ message: 'Failed to unroll playlist', error: err, playlistId });
@@ -241,6 +309,29 @@ io.on('connection', async (socket) => {
     io.to(rId).emit('ROSTER_UPDATE', { peers: buildActivePeers(sockets) });
   };
 
+  const buildStateSyncPayload = (roomId: string, correlationId: string, state: any, peers: any[]): StateSync => ({
+    event: 'STATE_SYNC',
+    version: 1,
+    correlationId,
+    payload: {
+      roomId,
+      title: state.title,
+      isPlaying: state.isPlaying,
+      currentPlayhead: state.currentPlayhead,
+      currentTrackId: state.currentTrackId,
+      updatedAt: state.updatedAt || Date.now(),
+      queue: state.queue || [],
+      history: state.history || [],
+      isPublic: state.isPublic || false,
+      isRequestOnly: state.isRequestOnly || false,
+      pendingRequests: state.pendingRequests || [],
+      peers,
+      hostUserId: state.hostId,
+      chatRateLimit: state.chatRateLimit,
+      repeatMode: state.repeatMode || 'off'
+    }
+  });
+
   let isReconnect = false;
   if (disconnectTimeouts.has(userId)) {
     const { timeout, oldSocketId } = disconnectTimeouts.get(userId)!;
@@ -257,26 +348,7 @@ io.on('connection', async (socket) => {
     if (state) {
       const sockets = await io.in(roomId).fetchSockets();
       const activePeers = buildActivePeers(sockets);
-      socket.emit('STATE_SYNC', {
-        event: 'STATE_SYNC',
-        version: 1,
-        correlationId: correlation_id,
-        payload: {
-          roomId,
-          title: state.title,
-          isPlaying: state.isPlaying,
-          currentPlayhead: state.currentPlayhead,
-          currentTrackId: state.currentTrackId,
-          updatedAt: state.updatedAt,
-          queue: state.queue,
-          history: state.history,
-          isPublic: state.isPublic,
-          isRequestOnly: state.isRequestOnly,
-          pendingRequests: state.pendingRequests,
-          peers: activePeers,
-          hostUserId: state.hostId
-        }
-      });
+      socket.emit('STATE_SYNC', buildStateSyncPayload(roomId, correlation_id, state, activePeers));
       io.to(roomId).emit('HOST_CHANGED', { hostId: state.hostId, hostName: state.hostId === userId ? username : undefined });
     }
   } else {
@@ -309,26 +381,7 @@ io.on('connection', async (socket) => {
     if (state) {
       const activePeers = buildActivePeers(sockets);
 
-      socket.emit('STATE_SYNC', {
-        event: 'STATE_SYNC',
-        version: 1,
-        correlationId: correlation_id,
-        payload: {
-          roomId,
-          title: state.title,
-          isPlaying: state.isPlaying,
-          currentPlayhead: state.currentPlayhead,
-          currentTrackId: state.currentTrackId,
-          updatedAt: state.updatedAt,
-          queue: state.queue || [],
-          history: state.history || [],
-          isPublic: state.isPublic || false,
-          isRequestOnly: state.isRequestOnly || false,
-          pendingRequests: state.pendingRequests || [],
-          peers: activePeers,
-          hostUserId: state.hostId
-        }
-      });
+      socket.emit('STATE_SYNC', buildStateSyncPayload(roomId, correlation_id, state, activePeers));
       // Broadcast lightweight roster update to everyone
       await broadcastRosterUpdate(roomId);
     }
@@ -385,7 +438,7 @@ io.on('connection', async (socket) => {
     }
 
     // Authority Check: Playback controls require host authority. Anyone can add tracks (ROOM_RESYNC)
-    const hostRequiredActions = ['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'BACK', 'QUEUE_REORDER', 'QUEUE_JUMP'];
+    const hostRequiredActions = ['PLAY', 'PAUSE', 'SEEK', 'SKIP', 'BACK', 'QUEUE_REORDER', 'QUEUE_JUMP', 'QUEUE_CLEAR', 'QUEUE_SHUFFLE', 'SET_REPEAT_MODE', 'TRACK_END'];
     if (hostRequiredActions.includes(mutation.payload.type)) {
         if (!state || state.hostId !== socket.data.userId) {
             logger.warn({ 
@@ -409,6 +462,7 @@ io.on('connection', async (socket) => {
     let isRequestOnly = state?.isRequestOnly ?? false;
     let pendingRequests = state?.pendingRequests || [];
     let chatRateLimit = state?.chatRateLimit;
+    let repeatMode = state?.repeatMode || 'off';
 
     if (mutation.payload.type === 'PLAY') isPlaying = true;
     if (mutation.payload.type === 'PAUSE') isPlaying = false;
@@ -427,6 +481,17 @@ io.on('connection', async (socket) => {
 
     if (mutation.payload.type === 'SET_CHAT_RATE_LIMIT' && mutation.payload.chatRateLimit) {
         chatRateLimit = mutation.payload.chatRateLimit;
+    }
+
+    if (mutation.payload.type === 'SET_REPEAT_MODE' && mutation.payload.repeatMode) {
+        repeatMode = mutation.payload.repeatMode;
+    }
+
+    if (mutation.payload.type === 'QUEUE_SHUFFLE') {
+        for (let i = queue.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [queue[i], queue[j]] = [queue[j], queue[i]];
+        }
     }
 
     if (mutation.payload.type === 'SET_PEER_STATUS' && mutation.payload.isDetached !== undefined) {
@@ -456,11 +521,16 @@ io.on('connection', async (socket) => {
                 isPlaying = true;
                 logger.info({ message: '[System] Auto-promoted single track add to idle room', roomId: mutation.payload.roomId, trackId: currentTrackId });
             } else {
-                queue.push(item);
+                if (mutation.payload.index !== undefined && mutation.payload.index >= 0 && mutation.payload.index <= queue.length) {
+                    queue.splice(mutation.payload.index, 0, item);
+                } else {
+                    queue.push(item);
+                }
             }
         }
     }
     
+    // fallow-ignore-next-line code-duplication
     if (mutation.payload.type === 'APPROVE_REQUEST' && mutation.payload.requestId) {
         if (socket.data.userId === state?.hostId) {
             const reqIndex = pendingRequests.findIndex((r: any) => r.id === mutation.payload.requestId);
@@ -479,6 +549,7 @@ io.on('connection', async (socket) => {
         }
     }
     
+    // fallow-ignore-next-line code-duplication
     if (mutation.payload.type === 'DENY_REQUEST' && mutation.payload.requestId) {
         if (socket.data.userId === state?.hostId) {
             const reqIndex = pendingRequests.findIndex((r: any) => r.id === mutation.payload.requestId);
@@ -507,6 +578,7 @@ io.on('connection', async (socket) => {
 
         if (isRequestOnly && socket.data.userId !== state?.hostId) {
             // Route all items to pending requests
+            // fallow-ignore-next-line code-duplication
             normalized.forEach(item => {
                 pendingRequests.push({
                     id: `req-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
@@ -587,27 +659,38 @@ io.on('connection', async (socket) => {
         }
     }
 
-    if (mutation.payload.type === 'SKIP') {
-        if (currentTrackId) {
-            history.push({ 
-                videoId: currentTrackId, 
-                title: currentTitle || `YouTube Video (${currentTrackId})`, 
-                status: 'played', 
-                timestamp: Date.now() 
-            });
-            if (history.length > 20) history = history.slice(-20);
-        }
-        if (queue.length > 0) {
-            const next = queue.shift();
-            currentTrackId = next?.videoId || '';
-            currentTitle = next?.title || '';
+    if (mutation.payload.type === 'SKIP' || mutation.payload.type === 'TRACK_END') {
+        const isTrackEnd = mutation.payload.type === 'TRACK_END';
+        
+        if (repeatMode === 'track' && isTrackEnd) {
             currentPlayhead = 0;
             isPlaying = true;
         } else {
-            currentTrackId = '';
-            currentTitle = '';
-            currentPlayhead = 0;
-            isPlaying = false;
+            if (currentTrackId) {
+                history.push({ 
+                    videoId: currentTrackId, 
+                    title: currentTitle || `YouTube Video (${currentTrackId})`, 
+                    status: 'played', 
+                    timestamp: Date.now() 
+                });
+                if (history.length > 20) history = history.slice(-20);
+                
+                if (repeatMode === 'queue') {
+                    queue.push({ videoId: currentTrackId, title: currentTitle || `YouTube Video (${currentTrackId})` });
+                }
+            }
+            if (queue.length > 0) {
+                const next = queue.shift();
+                currentTrackId = next?.videoId || '';
+                currentTitle = next?.title || '';
+                currentPlayhead = 0;
+                isPlaying = true;
+            } else {
+                currentTrackId = '';
+                currentTitle = '';
+                currentPlayhead = 0;
+                isPlaying = false;
+            }
         }
     }
 
@@ -660,28 +743,7 @@ io.on('connection', async (socket) => {
             });
             if (ytResponse.ok) {
                 const html = await ytResponse.text();
-                let items: { videoId: string; title: string }[] = [];
-                const jsonMatch = html.match(/(?:var\s+)?ytInitialData\s*=\s*({.*?});(?:<\/script>)?/);
-                if (jsonMatch) {
-                    try {
-                        const data = JSON.parse(jsonMatch[1]);
-                        const contents = data.contents?.twoColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents?.[0]?.playlistVideoListRenderer?.contents;
-                        if (contents) {
-                            items = contents
-                                .filter((i: any) => i.playlistVideoRenderer)
-                                .map((i: any) => ({
-                                    videoId: i.playlistVideoRenderer.videoId,
-                                    title: i.playlistVideoRenderer.title?.runs?.[0]?.text || 'Unknown Title'
-                                }));
-                        }
-                    } catch (e) {}
-                }
-                if (items.length === 0) {
-                    const videoIdRegex = /"videoId":"([a-zA-Z0-9_-]{11})"/g;
-                    const matches = Array.from(html.matchAll(videoIdRegex));
-                    const videoIds = Array.from(new Set(matches.map(m => m[1])));
-                    items = videoIds.map(id => ({ videoId: id, title: `Track ${id}` }));
-                }
+                let items = extractPlaylistItems(html);
 
                 if (items.length > 0) {
                     // Shuffle
@@ -691,6 +753,7 @@ io.on('connection', async (socket) => {
                     }
 
                     if (isRequestOnly && socket.data.userId !== state?.hostId) {
+                        // fallow-ignore-next-line code-duplication
                         items.forEach(item => {
                             pendingRequests.push({
                                 id: `req-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
@@ -720,7 +783,7 @@ io.on('connection', async (socket) => {
         }
     }
 
-    await roomManager.setState(mutation.payload.roomId, {
+    const updatedState = {
       isPlaying,
       currentPlayhead,
       currentTrackId,
@@ -731,8 +794,13 @@ io.on('connection', async (socket) => {
       isPublic,
       isRequestOnly,
       pendingRequests,
-      chatRateLimit
-    });
+      chatRateLimit,
+      repeatMode,
+      hostId: state?.hostId,
+      updatedAt: Date.now()
+    };
+
+    await roomManager.setState(mutation.payload.roomId, updatedState);
 
     if (mutation.payload.type === 'SET_PEER_STATUS') {
       await broadcastRosterUpdate(mutation.payload.roomId);
@@ -743,27 +811,7 @@ io.on('connection', async (socket) => {
     const socketsInRoom = await io.in(mutation.payload.roomId).fetchSockets();
     const activePeers = buildActivePeers(socketsInRoom);
 
-    io.to(mutation.payload.roomId).emit('STATE_SYNC', {
-      event: 'STATE_SYNC',
-      version: 1,
-      correlationId: mutation.correlationId,
-      payload: {
-        roomId: mutation.payload.roomId,
-        title,
-        isPlaying,
-        currentPlayhead,
-        currentTrackId,
-        updatedAt: Date.now(),
-        queue,
-        history,
-        isPublic,
-        isRequestOnly,
-        pendingRequests,
-        peers: activePeers,
-        hostUserId: state?.hostId,
-        chatRateLimit
-      }
-    });
+    io.to(mutation.payload.roomId).emit('STATE_SYNC', buildStateSyncPayload(mutation.payload.roomId, mutation.correlationId, updatedState, activePeers));
     });
   }
 
@@ -803,8 +851,9 @@ io.on('connection', async (socket) => {
     rateLimiter.cleanup(socket.id);
 
     if (rId && uId) {
-      // Immediate Eviction Logic (No Grace Window)
-      (async () => {
+      // Grace Window Logic
+      const timeout = setTimeout(async () => {
+        disconnectTimeouts.delete(uId);
         try {
           const state = await roomManager.getState(rId);
           if (!state) return; // Room already gone
@@ -839,7 +888,9 @@ io.on('connection', async (socket) => {
         } catch (err) {
           logger.error({ message: 'Error handling disconnect', error: err, socket_id: socket.id });
         }
-      })();
+      }, 15000); // 15 seconds grace period
+      
+      disconnectTimeouts.set(uId, { timeout, oldSocketId: socket.id });
     }
   });
 });

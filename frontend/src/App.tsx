@@ -1,18 +1,29 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSocket } from './hooks/useSocket';
 import { cn } from './lib/utils';
-import { Play, Pause, SkipForward, Radio, LogOut, Settings, Share2, Check, MessageSquare, ListMusic, VolumeX, Headphones, Menu, X, ChevronRight, Crown, Users, RotateCcw, Link2, Globe, ShieldCheck } from 'lucide-react';
+import { Play, Pause, SkipForward, Radio, LogOut, Settings, Share2, Check, MessageSquare, ListMusic, VolumeX, Headphones, Menu, X, ChevronRight, Crown, Users, RotateCcw, Link2, Globe, ShieldCheck, Repeat, Repeat1, PictureInPicture } from 'lucide-react';
+import { usePiP } from './hooks/usePiP';
 import { YouTubePlayer } from './components/YouTubePlayer';
 import type { YouTubePlayerRef } from './components/YouTubePlayer';
 import { ChatView } from './components/ChatView';
 import { QueueView } from './components/QueueView';
 import { MediaIngestionForm } from './components/MediaIngestionForm';
 
+const ErrorToast = ({ message, onClose }: { message: string, onClose: () => void }) => (
+  <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[60] animate-in fade-in slide-in-from-top-4 duration-300">
+    <div className="bg-red-600 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-red-500/50">
+      <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center font-bold text-xs">!</div>
+      <span className="text-sm font-bold tracking-tight">{message}</span>
+      <button onClick={onClose} className="ml-2 hover:opacity-50"><X className="w-4 h-4" /></button>
+    </div>
+  </div>
+);
+
 function App() {
   const [userId] = useState(() => {
     const saved = localStorage.getItem('muser_user_id');
     if (saved) return saved;
-    const newId = `user-${Math.random().toString(36).substr(2, 9)}`;
+    const newId = `user-${crypto.randomUUID()}`;
     localStorage.setItem('muser_user_id', newId);
     return newId;
   });
@@ -22,6 +33,10 @@ function App() {
   });
 
   const [inputRoomId, setInputRoomId] = useState('');
+  const [pendingShareUrl, setPendingShareUrl] = useState<string | null>(null);
+  const pipControls = usePiP();
+  const isAppPiP = pipControls.isAppPiP;
+  const setIsAppPiP = pipControls.setIsAppPiP;
   const [activeRoomId, setActiveRoomId] = useState<string | null>(() => {
     const match = window.location.pathname.match(/^\/room\/([A-Za-z0-9_-]+)/);
     return match ? match[1].toUpperCase() : null;
@@ -73,6 +88,24 @@ function App() {
   const handleRoomClosed = React.useCallback((message: string) => {
     setErrorToast(message);
     setActiveRoomId(null);
+  }, []);
+
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sharedText = params.get('text');
+    const sharedUrl = params.get('url');
+    const possibleUrl = sharedText || sharedUrl;
+
+    if (possibleUrl) {
+      // Remove params from URL to prevent loop
+      window.history.replaceState({}, '', window.location.pathname);
+      
+      const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|music\.youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/;
+      const match = possibleUrl.match(regex);
+      if (match && match[1]) {
+        setPendingShareUrl(possibleUrl);
+      }
+    }
   }, []);
 
   const { isConnected, roomState, isHost, emitMutation, messages, sendMessage, chatError } = useSocket(activeRoomId, userId, username, roomPassword, roomTitleInput, isUnsynced, handleRoomClosed);
@@ -143,9 +176,15 @@ function App() {
     }
   };
 
-  const handleIngest = async (input: string) => {
+  const handleIngest = async (input: string, playNext?: boolean) => {
     try {
-      // Robust domain-agnostic Playlist extraction
+      if (input.startsWith('playlist:')) {
+        const id = input.replace('playlist:', '');
+        emitMutation('QUEUE_PLAYLIST_REQUEST', { playlistId: id });
+        return;
+      }
+
+      // Playlist extractor
       const listRegex = /[?&]list=([a-zA-Z0-9_-]+)/;
       const listMatch = input.match(listRegex);
 
@@ -153,7 +192,7 @@ function App() {
         const playlistId = listMatch[1];
         if (isUnsynced) {
           try {
-            const res = await fetch(`http://localhost:8080/api/playlist?id=${playlistId}`);
+            const res = await fetch(`/api/playlist?id=${playlistId}`);
             if (res.ok) {
               const data = await res.json();
               setDetachedQueue((prev) => [...prev, ...data.items.map((i: any) => ({ videoId: i.id, title: i.title }))]);
@@ -176,9 +215,13 @@ function App() {
       
       if (videoId) {
         if (isUnsynced) {
-          setDetachedQueue((prev) => [...prev, { videoId, title: 'Local Track' }]);
+          if (playNext) {
+            setDetachedQueue((prev) => [{ videoId, title: 'Local Track' }, ...prev]);
+          } else {
+            setDetachedQueue((prev) => [...prev, { videoId, title: 'Local Track' }]);
+          }
         } else {
-          emitMutation('QUEUE_ADD', { item: videoId });
+          emitMutation('QUEUE_ADD', { item: videoId, ...(playNext ? { index: 0 } : {}) });
         }
       } else {
         throw new Error('Invalid Media Link or ID');
@@ -189,10 +232,17 @@ function App() {
     }
   };
 
+  React.useEffect(() => {
+    if (activeRoomId && pendingShareUrl && isConnected) {
+      handleIngest(pendingShareUrl);
+      setPendingShareUrl(null);
+    }
+  }, [activeRoomId, pendingShareUrl, isConnected]);
+
   const handlePlayerStateChange = (state: { isPlaying: boolean; playhead: number; isEnded?: boolean }) => {
     if (isUnsynced) return;
     if (state.isEnded) {
-      emitMutation('SKIP');
+      emitMutation('TRACK_END');
     } else {
       emitMutation(state.isPlaying ? 'PLAY' : 'PAUSE', { playhead: state.playhead });
     }
@@ -200,17 +250,28 @@ function App() {
 
   React.useEffect(() => {
     if ('mediaSession' in navigator) {
+      let currentTrackTitle = roomState?.title || 'Muser Sync';
+      if (roomState?.currentTrackId) {
+        const found = roomState.queue?.find(q => q.videoId === roomState.currentTrackId) 
+                   || roomState.history?.find(q => q.videoId === roomState.currentTrackId);
+        if (found) currentTrackTitle = found.title;
+      }
+
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: roomState?.title || 'Muser Sync',
+        title: currentTrackTitle,
         artist: activeRoomId || 'Stream',
         album: 'Collaborative Music',
+        artwork: roomState?.currentTrackId ? [
+          { src: `https://img.youtube.com/vi/${roomState.currentTrackId}/hqdefault.jpg`, sizes: '480x360', type: 'image/jpeg' }
+        ] : []
       });
+      
       navigator.mediaSession.setActionHandler('play', () => emitMutation('PLAY'));
       navigator.mediaSession.setActionHandler('pause', () => emitMutation('PAUSE'));
       navigator.mediaSession.setActionHandler('nexttrack', () => { if (isHost) emitMutation('SKIP'); });
       navigator.mediaSession.playbackState = roomState?.isPlaying ? 'playing' : 'paused';
     }
-  }, [roomState?.title, roomState?.isPlaying, activeRoomId, emitMutation, isHost]);
+  }, [roomState?.title, roomState?.isPlaying, roomState?.currentTrackId, roomState?.queue, roomState?.history, activeRoomId, emitMutation, isHost]);
 
   const [publicRooms, setPublicRooms] = useState<{roomId: string, title?: string, updatedAt: number}[]>([]);
 
@@ -247,15 +308,7 @@ function App() {
   if (!activeRoomId) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4 md:p-8 bg-black overflow-y-auto relative">
-        {errorToast && (
-          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[60] animate-in fade-in slide-in-from-top-4 duration-300">
-             <div className="bg-red-600 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-red-500/50">
-               <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center font-bold text-xs">!</div>
-               <span className="text-sm font-bold tracking-tight">{errorToast}</span>
-               <button onClick={() => setErrorToast(null)} className="ml-2 hover:opacity-50"><X className="w-4 h-4" /></button>
-             </div>
-          </div>
-        )}
+        {errorToast && <ErrorToast message={errorToast} onClose={() => setErrorToast(null)} />}
         <div className="max-w-6xl w-full mx-auto px-4 py-6 md:py-12 space-y-8 md:space-y-12">
           <div className="flex items-center justify-center gap-3 md:gap-4">
              <div className="inline-flex items-center justify-center w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-zinc-900 border border-zinc-800 shadow-2xl shrink-0">
@@ -379,15 +432,7 @@ function App() {
 
   return (
     <div className="h-screen flex flex-col bg-black text-white overflow-hidden relative">
-      {errorToast && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[60] animate-in fade-in slide-in-from-top-4 duration-300">
-           <div className="bg-red-600 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-red-500/50">
-             <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center font-bold text-xs">!</div>
-             <span className="text-sm font-bold tracking-tight">{errorToast}</span>
-             <button onClick={() => setErrorToast(null)} className="ml-2 hover:opacity-50"><X className="w-4 h-4" /></button>
-           </div>
-        </div>
-      )}
+      {errorToast && <ErrorToast message={errorToast} onClose={() => setErrorToast(null)} />}
 
       <header className="h-16 shrink-0 border-b border-zinc-900 bg-zinc-950/50 backdrop-blur-xl px-4 md:px-8 flex items-center justify-between z-40">
         {/* Left: Site logo as home button + room info */}
@@ -440,7 +485,45 @@ function App() {
             </div>
           )}
           <div className="flex-1 flex flex-col items-center justify-center p-4 md:p-8 space-y-8 overflow-y-auto">
-            <div className="w-full max-w-4xl aspect-video bg-zinc-900 rounded-[2rem] border border-zinc-800 shadow-2xl relative overflow-hidden group">
+            <div className="w-full max-w-2xl z-[60] relative">
+              <MediaIngestionForm onIngest={handleIngest} />
+            </div>
+
+            <div 
+              className={cn(
+                "bg-zinc-900 border border-zinc-800 relative overflow-hidden group shadow-2xl",
+                (!pipControls.isDragging && !pipControls.isResizing) && "transition-all duration-300",
+                isAppPiP 
+                  ? "fixed rounded-2xl border-white/20 z-[70]" 
+                  : "w-full max-w-4xl aspect-video rounded-[2rem] z-10"
+              )}
+              style={isAppPiP ? { top: pipControls.pos.y, left: pipControls.pos.x, width: pipControls.size.width, height: pipControls.size.height, touchAction: 'none' } : {}}
+              onPointerDown={pipControls.startDrag}
+              onPointerMove={pipControls.onDrag}
+              onPointerUp={pipControls.stopDrag}
+              onPointerCancel={pipControls.stopDrag}
+            >
+              {isAppPiP && (
+                <div 
+                  className="pip-resize-handle absolute bottom-0 right-0 w-8 h-8 cursor-se-resize z-[80] flex items-end justify-end p-1.5 opacity-50 hover:opacity-100"
+                  onPointerDown={pipControls.startResize}
+                  onPointerMove={pipControls.onResize}
+                  onPointerUp={pipControls.stopResize}
+                  onPointerCancel={pipControls.stopResize}
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 0L0 12H12V0Z" fill="currentColor" className="text-zinc-500" />
+                  </svg>
+                </div>
+              )}
+              {isAppPiP && (
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setIsAppPiP(false); }} 
+                  className="pip-close-btn absolute top-2 right-2 p-1.5 bg-black/60 hover:bg-black text-white rounded-lg z-[80] opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-md"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
               {activeTrackId ? (
                 <YouTubePlayer ref={ytPlayerRef} key={activeTrackId} videoId={activeTrackId} isPlaying={activePlaybackState ?? false} targetPlayhead={roomState?.currentPlayhead || 0} isHost={isHost} onStateChange={handlePlayerStateChange} updatedAt={roomState?.updatedAt || Date.now()} volume={volume} dataSaver={dataSaver} muted={audioMode === 'passive'} isUnsynced={isUnsynced} />
               ) : (
@@ -451,11 +534,7 @@ function App() {
               )}
             </div>
 
-            <div className="w-full max-w-2xl">
-              <MediaIngestionForm onIngest={handleIngest} />
-            </div>
-
-            <div className="flex flex-col items-center gap-4 w-full max-w-3xl">
+            <div className="flex flex-col items-center gap-4 w-full max-w-3xl z-10">
               <div className="w-full flex flex-wrap items-center justify-between gap-y-3 gap-x-4 px-4 md:px-6 py-4 bg-zinc-900/50 rounded-3xl border border-zinc-800/50 backdrop-blur-md">
                  {/* Container Block 1 - Player Controls (always centered on top row) */}
                  <div className="flex items-center justify-center gap-4 md:gap-8 w-full sm:w-auto sm:flex-1 order-1">
@@ -498,6 +577,18 @@ function App() {
                    }} disabled={(!isHost && !isUnsynced) || activeQueue.length === 0} className="p-3 bg-zinc-900 hover:bg-zinc-800 rounded-2xl border border-zinc-800 text-zinc-600 transition-all hover:scale-105 active:scale-90 disabled:opacity-20 disabled:grayscale disabled:cursor-not-allowed" title="Skip Track">
                      <SkipForward className="w-5 h-5 fill-current" />
                    </button>
+                   <button onClick={() => {
+                     if (isHost && !isUnsynced) {
+                        const currentMode = roomState?.repeatMode || 'off';
+                        const nextMode = currentMode === 'off' ? 'track' : currentMode === 'track' ? 'queue' : 'off';
+                        emitMutation('SET_REPEAT_MODE', { repeatMode: nextMode });
+                     }
+                   }} disabled={!isHost || isUnsynced} className={cn("p-3 rounded-2xl border transition-all hover:scale-105 active:scale-90 disabled:opacity-20 disabled:pointer-events-none", (roomState?.repeatMode || 'off') !== 'off' ? "bg-emerald-500/10 border-emerald-500/50 text-emerald-500" : "bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-600")} title="Repeat Mode">
+                     {(roomState?.repeatMode || 'off') === 'track' ? <Repeat1 className="w-5 h-5" /> : <Repeat className="w-5 h-5" />}
+                   </button>
+                   <button onClick={() => setIsAppPiP(!isAppPiP)} className={cn("p-3 rounded-2xl border transition-all hover:scale-105 active:scale-90", isAppPiP ? "bg-blue-500/10 border-blue-500/50 text-blue-400" : "bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-600")} title="In-App Picture in Picture">
+                     <PictureInPicture className="w-5 h-5" />
+                   </button>
                  </div>
 
                  {/* Container Block 2 - Mode Toggles */}
@@ -526,7 +617,7 @@ function App() {
           </div>
         </main>
 
-        <aside className={cn( "fixed inset-y-0 right-0 z-50 w-80 bg-zinc-950 border-l border-zinc-900 transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 flex flex-col shadow-2xl lg:shadow-none", isSidebarOpen ? "translate-x-0" : "translate-x-full lg:translate-x-0", "lg:w-96" )}>
+        <aside className={cn( "fixed inset-y-0 right-0 z-[80] w-80 bg-zinc-950 border-l border-zinc-900 transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 flex flex-col shadow-2xl lg:shadow-none", isSidebarOpen ? "translate-x-0" : "translate-x-full lg:translate-x-0", "lg:w-96" )}>
           {isSidebarOpen && (
             <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden absolute -left-12 top-4 p-3 bg-zinc-950 border border-zinc-900 rounded-l-xl text-zinc-400 animate-in fade-in slide-in-from-right-4 duration-300">
               <ChevronRight className="w-6 h-6" />
@@ -548,6 +639,8 @@ function App() {
                 isHost={isHost} 
                 localUserId={userId}
                 hostUserId={roomState?.hostUserId}
+                onClear={() => emitMutation('QUEUE_CLEAR')}
+                onShuffle={() => emitMutation('QUEUE_SHUFFLE')}
                 onReorder={(oldIndex, newIndex) => emitMutation('QUEUE_REORDER', { index: oldIndex, newIndex })}
                 onLocalReorder={(oldIndex, newIndex) => {
                   const newQ = [...detachedQueue];
