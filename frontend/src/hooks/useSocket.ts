@@ -14,7 +14,7 @@ export interface QueueItem {
   title: string;
 }
 
-export interface HistoryItem extends QueueItem {
+interface HistoryItem extends QueueItem {
   status: 'played' | 'skipped';
   timestamp: number;
 }
@@ -166,7 +166,6 @@ export function useSocket(roomId: string | null, userId: string, username: strin
     hostId,
     isHost: userId === hostId,
     emitMutation,
-    socketId: socketRef.current?.id,
     messages,
     sendMessage,
     chatError

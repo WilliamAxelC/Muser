@@ -9,6 +9,16 @@ import { ChatView } from './components/ChatView';
 import { QueueView } from './components/QueueView';
 import { MediaIngestionForm } from './components/MediaIngestionForm';
 
+const ErrorToast = ({ message, onClose }: { message: string, onClose: () => void }) => (
+  <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[60] animate-in fade-in slide-in-from-top-4 duration-300">
+    <div className="bg-red-600 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-red-500/50">
+      <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center font-bold text-xs">!</div>
+      <span className="text-sm font-bold tracking-tight">{message}</span>
+      <button onClick={onClose} className="ml-2 hover:opacity-50"><X className="w-4 h-4" /></button>
+    </div>
+  </div>
+);
+
 function App() {
   const [userId] = useState(() => {
     const saved = localStorage.getItem('muser_user_id');
@@ -298,15 +308,7 @@ function App() {
   if (!activeRoomId) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4 md:p-8 bg-black overflow-y-auto relative">
-        {errorToast && (
-          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[60] animate-in fade-in slide-in-from-top-4 duration-300">
-             <div className="bg-red-600 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-red-500/50">
-               <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center font-bold text-xs">!</div>
-               <span className="text-sm font-bold tracking-tight">{errorToast}</span>
-               <button onClick={() => setErrorToast(null)} className="ml-2 hover:opacity-50"><X className="w-4 h-4" /></button>
-             </div>
-          </div>
-        )}
+        {errorToast && <ErrorToast message={errorToast} onClose={() => setErrorToast(null)} />}
         <div className="max-w-6xl w-full mx-auto px-4 py-6 md:py-12 space-y-8 md:space-y-12">
           <div className="flex items-center justify-center gap-3 md:gap-4">
              <div className="inline-flex items-center justify-center w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-zinc-900 border border-zinc-800 shadow-2xl shrink-0">
@@ -430,15 +432,7 @@ function App() {
 
   return (
     <div className="h-screen flex flex-col bg-black text-white overflow-hidden relative">
-      {errorToast && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[60] animate-in fade-in slide-in-from-top-4 duration-300">
-           <div className="bg-red-600 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-red-500/50">
-             <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center font-bold text-xs">!</div>
-             <span className="text-sm font-bold tracking-tight">{errorToast}</span>
-             <button onClick={() => setErrorToast(null)} className="ml-2 hover:opacity-50"><X className="w-4 h-4" /></button>
-           </div>
-        </div>
-      )}
+      {errorToast && <ErrorToast message={errorToast} onClose={() => setErrorToast(null)} />}
 
       <header className="h-16 shrink-0 border-b border-zinc-900 bg-zinc-950/50 backdrop-blur-xl px-4 md:px-8 flex items-center justify-between z-40">
         {/* Left: Site logo as home button + room info */}
