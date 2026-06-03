@@ -32,3 +32,13 @@ changelog.md
 .progress.md
 sd
 architecture.md
+
+# Editor and Tooling Configs
+.antigravitycli/
+.codex/
+.cursor/
+.gemini/
+.mcp.json
+.vscode/
+.zed/
+opencode.json
